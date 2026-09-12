@@ -1,0 +1,9 @@
+bin/
+obj/
+.git/
+.vs/
+.vscode/
+.idea/
+frontend/node_modules/
+*.md
+.zcode/

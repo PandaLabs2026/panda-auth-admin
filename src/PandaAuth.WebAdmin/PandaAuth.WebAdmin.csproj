@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <RootNamespace>PandaAuth.WebAdmin</RootNamespace>
+    <AssemblyName>PandaAuth.WebAdmin</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 无外部 NuGet 依赖；前端产物由 frontend/ 构建输出到 wwwroot/admin -->
+  </ItemGroup>
+
+</Project>
