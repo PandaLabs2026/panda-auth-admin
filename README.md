@@ -1,30 +1,47 @@
 # panda-auth-webadmin
 
-PandaAuth 管理后台——`https://auth.pandalabs.cn/admin`，同仓 BFF + React SPA（对齐 panda-webadmin 模式）。
+**PandaAuth by PandaLabs** · [English](README.en.md)
 
-| 组成 | 技术栈 | 说明 |
-|---|---|---|
-| `src/PandaAuth.WebAdmin` | .NET 10 BFF | Cookie 会话 + 防伪令牌（`X-XSRF-Token`）+ SPA 静态托管 + `/admin/healthz` |
-| `frontend/` | React 19 + Vite 7 + TS strict + Tailwind 4 + shadcn/ui | 管理端 SPA；构建产物输出到 BFF `wwwroot/admin`（对齐 panda-webapp 模式） |
+> 研发阶段，尚无正式受支持发行版；接入采用邀请或申请口径。已有实现不等于已完成发行验证。
 
-## 页面现状（Phase 0 = 骨架）
+## 职责与边界
 
-- `/admin/login` 登录页（品牌绿面板 + shadcn 表单；`POST /admin/api/auth/login` 返回 501，Phase 1 接入 PandaAuth Admin API）
-- 占位 API：`/admin/api/antiforgery`（防伪令牌）、`/admin/healthz`
+PandaAuth 管理后台，由 .NET 10 BFF 与 React 19 前端组成。生产路径为 `/admin`，后端监听 127.0.0.1:9006；管理数据计划通过 Server Admin API 访问，不直连数据库。
 
-## 快速开始
+## 当前实现与限制
+
+[后端入口](src/PandaAuth.WebAdmin/Program.cs)已有 Cookie 配置、防伪令牌和静态托管；[登录页](frontend/src/pages/login.tsx)仍为占位。`POST /admin/api/auth/login` 固定返回 501，不能描述为已具备真实管理员登录或动态客户端管理。
+
+健康路径 `/admin/healthz` 与防伪入口 `/admin/api/antiforgery` 存在。用户、客户端和审计管理为 Phase 1 目标；Cookie/防伪配置存在不等于安全验收通过。
+
+## 前置条件与构建运行
+
+需要 .NET SDK，版本选择见本仓 [global.json](global.json)（当前请求 10.0.112，允许 latestFeature roll-forward）。七仓按[工作区布局](https://github.com/PandaLabs2026/panda-auth/blob/main/WORKSPACE.md)同级克隆，跨仓链接需要对应访问权限。以下命令在本仓根目录执行；本轮仅静态核对命令，未执行构建或启动。
+
+前端使用 Node 24 与 npm（与 Docker 构建环境一致）。本仓无跨仓 ProjectReference。前端构建输出到 BFF 的 `wwwroot/admin`。
 
 ```bash
-# 后端
-dotnet run --project src/PandaAuth.WebAdmin        # http://localhost:9006
-
-# 前端（独立 dev server，API 代理到 9006）
-cd frontend && npm install && npm run dev          # http://localhost:5171
-npm run build                                      # 产物落 BFF wwwroot/admin
+dotnet build PandaAuth.WebAdmin.slnx
+cd frontend
+npm ci
+npm run build
+cd ..
+dotnet run --project src/PandaAuth.WebAdmin
 ```
 
-## 说明
+构建后访问 http://localhost:9006/admin/login，仅显示登录骨架。前端热更新可在另一终端从本仓根目录执行：
 
-- Token 不进 JS/localStorage：沿用 panda-webapp BFF 安全约定（HttpOnly Cookie + 防伪头）
-- 组件与 shadcn 官方 registry 同步：`frontend/components.json` 已配置（new-york），后续可用 `npx shadcn add <component>` 增补
-- Phase 1 页面：用户管理、客户端管理、登录审计查询（数据全部经 Server 的 Admin API，不直连数据库）
+```bash
+cd frontend
+npm run dev
+```
+
+前端开发端口 5171，API 代理到 9006；完整后端登录未实现，不能用页面打开代替接入验收。
+
+## Roadmap 与治理
+
+实现目标见[能力矩阵](https://github.com/PandaLabs2026/panda-auth/blob/main/docs/open-source/capabilities.md)与[发布门禁](https://github.com/PandaLabs2026/panda-auth/blob/main/docs/open-source/release-readiness.md)。实际业务需求驱动路线图，社区请求按方向和维护成本评估，不承诺交付。[社区/商业边界](https://github.com/PandaLabs2026/panda-auth/blob/main/docs/open-source/strategy.md)表示能力归属，不代表商业模块已经交付。
+
+- [安全政策](SECURITY.md)：选定私密报告渠道，启用状态未核验；不公开提交漏洞细节。
+- [贡献指南](CONTRIBUTING.md)：本仓检查与统一贡献规则。
+- [MIT License](LICENSE)：适用于自有代码和文档，具体范围见[许可说明](LICENSING.md)；第三方许可仍适用，品牌图片除外。
