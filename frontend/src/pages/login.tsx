@@ -43,7 +43,10 @@ export default function LoginPage() {
       <aside className="login-brand-panel relative hidden flex-1 items-end overflow-hidden p-10 text-white lg:flex">
         <div className="login-bamboo absolute inset-0" aria-hidden="true" />
         <div className="relative">
-          <p className="text-3xl font-bold tracking-wide">🐼 PandaAuth</p>
+          <p className="flex items-center gap-3 text-3xl font-bold tracking-wide">
+            <img src="/admin/apple-touch-icon.png" alt="" className="h-10 w-10 rounded-lg" />
+            PandaAuth
+          </p>
           <p className="mt-3 max-w-md text-sm opacity-90">
             熊猫实验室统一身份认证中台。一次登录，全生态通行。
           </p>

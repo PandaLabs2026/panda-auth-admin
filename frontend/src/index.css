@@ -4,24 +4,26 @@
 
 /*
  * 设计令牌：shadcn/ui（Tailwind v4 CSS-first）。
- * 品牌主色对齐 panda 系品牌绿 #2f6f4f（暗色态 #8dd6b2），其余为 neutral 中性色。
+ * 镜像自 panda-auth/design/tokens.css（2026-09 定稿）：主题钢蓝 #2E6F96、结构墨色 #2B3438，
+ * 森林绿只作焦点环功能色；深色档为钢蓝提亮 #6FA6C9 + 墨色推导底，焦点环薄荷绿 #8DD6B2。
+ * 改令牌先改 design/tokens.css 正本，再整块同步此处。
  */
 :root {
   --radius: 0.625rem;
-  --background: #f6f8f7;
-  --foreground: #1f2937;
+  --background: #fafaf8;
+  --foreground: #2b3438;
   --card: #ffffff;
-  --card-foreground: #1f2937;
+  --card-foreground: #2b3438;
   --popover: #ffffff;
-  --popover-foreground: #1f2937;
-  --primary: #2f6f4f;
+  --popover-foreground: #2b3438;
+  --primary: #2e6f96;
   --primary-foreground: #ffffff;
-  --secondary: #eef2f0;
-  --secondary-foreground: #245741;
-  --muted: #f3f4f6;
-  --muted-foreground: #6b7280;
-  --accent: #eef2f0;
-  --accent-foreground: #245741;
+  --secondary: #ebf2f7;
+  --secondary-foreground: #25597a;
+  --muted: #f2f5f6;
+  --muted-foreground: #64737a;
+  --accent: #ebf2f7;
+  --accent-foreground: #25597a;
   --destructive: #b91c1c;
   --border: #e5e7eb;
   --input: #d1d5db;
@@ -29,23 +31,23 @@
 }
 
 .dark {
-  --background: #0d1117;
-  --foreground: #e6edf3;
-  --card: #161b22;
-  --card-foreground: #e6edf3;
-  --popover: #161b22;
-  --popover-foreground: #e6edf3;
-  --primary: #8dd6b2;
-  --primary-foreground: #0d1117;
-  --secondary: #21262d;
-  --secondary-foreground: #8dd6b2;
-  --muted: #21262d;
-  --muted-foreground: #8b949e;
-  --accent: #21262d;
-  --accent-foreground: #8dd6b2;
-  --destructive: #f87171;
-  --border: #30363d;
-  --input: #30363d;
+  --background: #151b1e;
+  --foreground: #e7ecea;
+  --card: #1f272b;
+  --card-foreground: #e7ecea;
+  --popover: #273136;
+  --popover-foreground: #e7ecea;
+  --primary: #6fa6c9;
+  --primary-foreground: #0e1f2b;
+  --secondary: #273136;
+  --secondary-foreground: #82b6d6;
+  --muted: #232b30;
+  --muted-foreground: #aab5b1;
+  --accent: #273136;
+  --accent-foreground: #82b6d6;
+  --destructive: #e07070;
+  --border: rgba(255, 255, 255, 0.1);
+  --input: rgba(255, 255, 255, 0.1);
   --ring: #8dd6b2;
 }
 
@@ -84,9 +86,9 @@
   }
 }
 
-/* 登录页品牌面板：品牌绿渐变 + 竹纹装饰（对齐 panda-webapp login-brand-panel）。 */
+/* 登录页品牌面板：钢蓝渐变 + 竹纹装饰（品牌令牌同步自 index.css / design/tokens.css）。 */
 .login-brand-panel {
-  background: linear-gradient(160deg, #2f6f4f 0%, #245741 60%, #1d4535 100%);
+  background: linear-gradient(160deg, #2e6f96 0%, #25597a 60%, #1c4560 100%);
 }
 .login-bamboo {
   background-image:
