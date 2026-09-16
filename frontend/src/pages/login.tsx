@@ -66,7 +66,7 @@ export default function LoginPage() {
                   id="email"
                   type="email"
                   autoComplete="username"
-                  placeholder="admin@pandalabs.cn"
+                  placeholder="admin@pandalabs.cc"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   required
