@@ -3,11 +3,6 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "allowScripts": {
-    "esbuild": [
-      "postinstall"
-    ]
-  },
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

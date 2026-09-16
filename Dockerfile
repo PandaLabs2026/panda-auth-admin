@@ -5,8 +5,9 @@
 # ================= 前端构建 =================
 FROM node:24-bookworm-slim AS frontend
 WORKDIR /fe
-COPY frontend/package.json frontend/package-lock.json* ./
-RUN npm install
+# lockfile 必选：去掉 `*` 通配后缺失即构建失败，避免装出与提交内容无关的依赖树
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
 COPY frontend/ .
 RUN npm run build
 
@@ -24,12 +25,24 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 
-COPY --from=build /app .
-COPY --from=frontend /src/PandaAuth.WebAdmin/wwwroot/admin ./wwwroot/admin/
+# 非 root 运行：aspnet 基础镜像自带 uid 1654 的 app 用户
+COPY --chown=app:app --from=build /app .
+COPY --chown=app:app --from=frontend /src/PandaAuth.WebAdmin/wwwroot/admin ./wwwroot/admin/
+
+# DataProtection 密钥目录必须在镜像里预建并归 app 所有：命名卷首次创建时继承的是镜像内
+# 该路径的属主，目录缺失或属 root 时 app 写不进密钥，启动即失败（compose 挂载了本路径）。
+RUN mkdir -p /var/lib/panda-auth/webadmin-dataprotection \
+    && chown app:app /var/lib/panda-auth/webadmin-dataprotection
 
 ENV ASPNETCORE_ENVIRONMENT=Production \
     ASPNETCORE_URLS=http://127.0.0.1:9006
 
 EXPOSE 9006
+
+# 镜像级探活；compose 的 healthcheck 会覆盖它，属双保险
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
+    CMD curl -fsS http://127.0.0.1:9006/admin/healthz || exit 1
+
+USER app
 
 ENTRYPOINT ["dotnet", "PandaAuth.WebAdmin.dll"]
