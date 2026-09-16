@@ -39,7 +39,10 @@ ENV ASPNETCORE_ENVIRONMENT=Production \
 
 EXPOSE 9006
 
-# 镜像级探活；compose 的 healthcheck 会覆盖它，属双保险
+# 镜像级探活（**仅在裸 docker run 下生效**）：deploy/docker-compose.yml 给每个服务都写了
+# 容器级 healthcheck，容器级优先、会**覆盖**本指令（已实测）。两处 URL 与参数刻意同构；
+# compose 用的 start-period 是 15s 而非此处的 30s —— 仍然安全：start-period 内的失败
+# 不计入 retries，之后须连续 3 次失败（每次间隔 interval=30s）才会被标 unhealthy。
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -fsS http://127.0.0.1:9006/admin/healthz || exit 1
 

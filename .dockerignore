@@ -1,9 +1,23 @@
-bin/
-obj/
+# 本仓即构建上下文（release.sh 的 svc_context → panda-auth-webadmin），
+# 故这些规则**相对仓根**，可直接生效。
+#
+# ⚠️ 构建产物规则必须带 `**/` 前缀：实际产物在 src/PandaAuth.WebAdmin/bin|obj，
+#    写成 `bin/` 只匹配仓根的 bin/，等于没排除（2026-09-16 实测：往
+#    src/PandaAuth.WebAdmin/bin/ 种入 20MB 后上下文随之涨到 20.45MB）。
+**/bin/
+**/obj/
+**/TestResults/
 .git/
 .vs/
 .vscode/
 .idea/
-frontend/node_modules/
+**/node_modules/
 *.md
 .zcode/
+
+# 前端构建产物（由 vite 输出，不入库）。
+# 不变式：git ls-files src/PandaAuth.WebAdmin/wwwroot 命中数为 0，
+# 该目录 100% 是构建输出。若将来这里混入**随源码提交**的资产
+# （对照 server / website 的 wwwroot/brand/**），必须收窄为只排除
+# src/PandaAuth.WebAdmin/wwwroot/admin/，否则会把该资产挡在镜像外。
+src/PandaAuth.WebAdmin/wwwroot/
