@@ -105,13 +105,18 @@ app.MapPost("/admin/api/auth/login", () =>
 // 探活匿名：容器 healthcheck 由 docker 发起，不带任何凭据；它只回 healthy/unhealthy，不泄露管理数据。
 app.MapHealthChecks("/admin/healthz").AllowAnonymous();
 
-// /admin/api 命名空间不参与 SPA 回退——**这是默认拒绝能否成立的关键一条**。
+// BFF 保留命名空间不参与 SPA 回退——**这是默认拒绝能否成立的关键一条**。
 // 少写它，未映射的 API 路径就会被下面的 SPA 回退接走并返回 200 + index.html：
 // 于是探不到 401，也分不清「路径拼错」与「端点漏加授权」，FallbackPolicy 在 API 面上形同虚设
-// （实测未加本行时 /admin/api/session、/admin/api/users 均返回 200）。
-// 显式 RequireAuthorization：即使将来有人去掉 FallbackPolicy，API 命名空间的默认归属也不变。
+// （实测未加时 /admin/api/session、/admin/api/users 均返回 200）。
+// 前缀清单集中在 BffRoutes.ProtectedPrefixes：兜底是**按前缀专有**的，新增服务端命名空间
+// （如 /admin/v2）时加进那个数组即可，不必记得来这里补一行。
+// 显式 RequireAuthorization：即使将来有人去掉 FallbackPolicy，这些命名空间的默认归属也不变。
 // 认证过的调用方拿到 404（路径确实不存在），匿名调用方先在授权阶段被拦下。
-app.MapFallback("/admin/api/{**path}", () => Results.NotFound()).RequireAuthorization();
+foreach (var prefix in BffRoutes.ProtectedPrefixes)
+{
+    app.MapFallback($"{prefix}/{{**path}}", () => Results.NotFound()).RequireAuthorization();
+}
 
 // SPA 回退：/admin 下非文件路径一律返回 index.html（前端路由接管）。
 // 匿名是必需的：登录页 /admin/login 就是由这里返回的，它若是 401，登录入口直接不存在。
