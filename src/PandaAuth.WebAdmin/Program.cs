@@ -3,6 +3,7 @@ using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using PandaAuth.WebAdmin;
 
@@ -19,6 +20,19 @@ builder.Services
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
         options.LoginPath = "/admin/login";
     });
+
+// 会话 Cookie 与防伪令牌由 DataProtection 保护。Auth:DataProtectionKeyPath 非空时持久化密钥环
+// （生产由 compose 注入卷路径），容器重建后既有登录态不失效；默认空串 = 临时密钥，仅限开发环境。
+// 应用名固定为 PandaAuth.WebAdmin：不同服务不共用密钥环，各服务的卷本就独立。
+var dataProtectionKeyPath = builder.Configuration["Auth:DataProtectionKeyPath"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
+{
+    builder.Services
+        .AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath))
+        .SetApplicationName("PandaAuth.WebAdmin");
+}
+
 builder.Services.AddAuthorization();
 builder.Services.AddHealthChecks();
 
