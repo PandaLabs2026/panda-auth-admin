@@ -7,6 +7,9 @@
 **/bin/
 **/obj/
 **/TestResults/
+# frontend/dist/ 见 .gitignore；今天 vite 的 outDir 已指向 wwwroot/admin，此条属
+# 空转，但留着防「有人改回默认 outDir」时的潜在漂移（me / server 早已有这条）。
+**/dist/
 .git/
 .vs/
 .vscode/
