@@ -100,7 +100,8 @@ app.MapPost("/admin/api/auth/login", () =>
     // 登录入口本身不能要求已认证。
     Results.Problem(statusCode: StatusCodes.Status501NotImplemented,
         title: "Not implemented",
-        detail: "管理后台登录将在 Phase 1 通过 PandaAuth Admin API 实现。")).AllowAnonymous();
+        detail: "管理后台登录将由 Phase 1 以 OIDC 客户端流实现（admin-web 机密客户端 + PKCE + AdminRole 门禁），" +
+                "不新建 Admin 认证 API；见元仓 ADR docs/decisions/2026-09-18-webadmin-oidc-login.md。")).AllowAnonymous();
 
 // 探活匿名：容器 healthcheck 由 docker 发起，不带任何凭据；它只回 healthy/unhealthy，不泄露管理数据。
 app.MapHealthChecks("/admin/healthz").AllowAnonymous();
