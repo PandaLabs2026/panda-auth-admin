@@ -1,0 +1,19 @@
+<Project>
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- OpenIddict 7.x：WebAdmin BFF 作为第一方 OIDC 客户端接入 IDP（与 panda-auth-me 同款） -->
+    <PackageVersion Include="OpenIddict.AspNetCore" Version="7.7.0" />
+    <PackageVersion Include="OpenIddict.Client.SystemNetHttp" Version="7.7.0" />
+    <!-- 测试（取值与 panda-auth-server / panda-auth-me 的测试工程保持一致，同一工作区一套测试栈） -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <!-- 集成测试（路由守卫）：WebApplicationFactory -->
+    <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

@@ -6,7 +6,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- 无外部 NuGet 依赖；前端产物由 frontend/ 构建输出到 wwwroot/admin -->
+    <!-- OIDC 客户端接入（版本见 Directory.Packages.props）；前端产物由 frontend/ 构建输出到 wwwroot/admin -->
+    <PackageReference Include="OpenIddict.AspNetCore" />
+    <PackageReference Include="OpenIddict.Client.SystemNetHttp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 跨进程契约（Nickname/Revocation/Admin 角色常量）；需要同级 panda-auth-share 克隆 -->
+    <ProjectReference Include="..\..\..\panda-auth-share\src\PandaAuth.Shared\PandaAuth.Shared.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- AdminSessionIdentity（角色门禁）以 internal 可测，先例：server 的 CreatePrincipalAsync -->
+    <InternalsVisibleTo Include="PandaAuth.WebAdmin.Tests" />
   </ItemGroup>
 
 </Project>
