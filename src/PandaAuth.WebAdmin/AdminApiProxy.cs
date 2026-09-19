@@ -119,6 +119,9 @@ public sealed class AdminApiProxy(
     {
         if (string.IsNullOrEmpty(current.RefreshToken))
         {
+            // 会话票据没有 RT：多半是很早版本登录签发的旧会话。记 warning 而非静默——
+            // 这是「数据请求 401 → 重登」链路里最隐蔽的一环。
+            logger.LogWarning("会话票据中没有 refresh_token，无法刷新（旧版会话？重新登录即自愈）。");
             return null;
         }
 

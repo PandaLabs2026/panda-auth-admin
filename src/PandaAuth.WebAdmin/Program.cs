@@ -251,7 +251,11 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
         "管理员会话建立：sub={Subject}（IP={IpAddress}）。",
         identity.FindFirst(Claims.Subject)?.Value,
         context.Connection.RemoteIpAddress);
-    return Results.Redirect(LoginReturnUrl.Fallback);
+    // 落点优先取 challenge 时经 state 令牌往返保留的 RedirectUri（api 层 401 跳转带 returnUrl），
+    // 不能硬编码 Fallback——否则任何静默重登都把用户拽回概览（2026-09-19「跳回」的第二环）。
+    // Sanitize 再兜一层：state 内容理论上是本服务签发的，但防御纵深零成本。
+    var target = result.Properties?.RedirectUri;
+    return Results.Redirect(string.IsNullOrWhiteSpace(target) ? LoginReturnUrl.Fallback : LoginReturnUrl.Sanitize(target));
 }).AllowAnonymous();
 
 // 会话查询（SPA 用）：未登录 401（前端引导全页跳 /admin/login），已登录回显身份与角色。
