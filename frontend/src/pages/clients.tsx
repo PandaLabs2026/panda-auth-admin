@@ -216,9 +216,9 @@ export default function ClientsPage() {
           </Card>
 
           {selected.clientType === "confidential" && (
-            <Card className="border-amber-300">
+            <Card className="border-amber-300 dark:border-amber-600">
               <CardHeader>
-                <CardTitle className="text-base text-amber-800">密钥轮换</CardTitle>
+                <CardTitle className="text-base text-amber-800 dark:text-amber-300">密钥轮换</CardTitle>
                 <CardDescription>
                   生成 32 字节随机密钥，明文只显示一次；旧密钥立即作废。第一方客户端（admin-web / me-web）轮换后须同步服务器 env 并重跑迁移对账。
                 </CardDescription>

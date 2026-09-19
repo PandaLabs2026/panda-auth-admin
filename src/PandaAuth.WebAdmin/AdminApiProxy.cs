@@ -109,8 +109,8 @@ public sealed class AdminApiProxy(
     }
 
     /// <summary>
-    /// 刷新会话令牌：换新 AT/RT 并重写会话 Cookie（同一身份重建，角色门禁重新判定）。
-    /// 成功返回新 AT；失败（无 RT / IDP 拒绝 / 角色丢失）返回 null。
+    /// 刷新会话令牌：换新 AT/RT 并重写会话 Cookie，**保留既有已门禁的会话身份**。
+    /// 失败（无 RT / IDP 拒绝）返回 null。
     /// </summary>
     private async Task<string?> TryRefreshAsync(
         HttpContext context,
@@ -132,14 +132,12 @@ public sealed class AdminApiProxy(
                 CancellationToken = cancellationToken,
             });
 
-            // 刷新后的身份重新过一遍门禁（角色被回收的账号不得继续停留管理台）。
-            var (identity, isAdmin) = AdminSessionIdentity.Build(result.Principal!);
-            if (!isAdmin)
-            {
-                logger.LogWarning("令牌刷新成功但 admin 角色已丢失，拒绝重建会话。");
-                return null;
-            }
-
+            // 沿用既有会话身份、只更新令牌——刻意**不**用刷新 principal 重建身份：
+            // 刷新流不经过 userinfo 并入，principal 不带 roles claim（IDP 把角色只写入 AT），
+            // 若据此重建，角色门禁必然误杀并把在线管理员踢回登录——正是 2026-09-19 生产
+            // 「进入子页面后跳回概览」的根因。角色回收由令牌侧兜底：冻结/重置已联动
+            // RevokeUserTokens，令牌失效即会话失效。
+            var identity = new ClaimsIdentity(context.User.Identity!);
             var properties = new AuthenticationProperties();
             var tokens = new List<AuthenticationToken>();
             if (result.AccessToken is { } accessToken)

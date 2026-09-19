@@ -138,9 +138,9 @@ export default function UsersPage() {
                     <span
                       className={
                         user.status === 0
-                          ? "rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700"
+                          ? "rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
                           : user.status === 1
-                            ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700"
+                            ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300"
                             : "rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
                       }
                     >
@@ -185,13 +185,13 @@ export default function UsersPage() {
       </div>
 
       {newPassword && (
-        <Card className="border-amber-300 bg-amber-50">
+        <Card className="border-amber-300 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/50">
           <CardHeader>
-            <CardTitle className="text-sm text-amber-800">新密码（仅显示这一次）</CardTitle>
+            <CardTitle className="text-sm text-amber-800 dark:text-amber-300">新密码（仅显示这一次）</CardTitle>
             <CardDescription>请立即复制并安全送达用户；服务端只保留哈希，无法再次取出。</CardDescription>
           </CardHeader>
           <CardContent>
-            <code className="rounded bg-white px-3 py-2 font-mono text-base">{newPassword}</code>
+            <code className="rounded bg-white px-3 py-2 font-mono text-base dark:bg-muted">{newPassword}</code>
           </CardContent>
         </Card>
       )}

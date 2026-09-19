@@ -10,8 +10,10 @@ async function fetchAntiforgeryToken(): Promise<string> {
   return token
 }
 
+/** 带 returnUrl 的登录跳转：重登后回到当前页面而非概览（BFF 端 LoginReturnUrl 白名单放行 /admin 前缀）。 */
 function unauthorized(): never {
-  window.location.assign("/admin/login")
+  const returnUrl = encodeURIComponent(window.location.pathname + window.location.search)
+  window.location.assign(`/admin/login?returnUrl=${returnUrl}`)
   throw new Error("unauthorized")
 }
 
@@ -19,6 +21,10 @@ export async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { "X-Requested-With": "XMLHttpRequest" } })
   if (response.status === 401) unauthorized()
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  // 会话 Cookie 过期时 BFF 返回 302 → fetch 跟随重定向最终拿到登录页 HTML（200）：
+  // JSON 解析必然失败，统一折算为带 returnUrl 的登录跳转而不是莫名的解析报错。
+  const contentType = response.headers.get("content-type") ?? ""
+  if (!contentType.includes("application/json")) unauthorized()
   return (await response.json()) as T
 }
 
