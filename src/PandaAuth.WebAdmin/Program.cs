@@ -210,13 +210,6 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
         return Results.Redirect("/admin/login");
     }
 
-    // 临时诊断（2026-09-19 弹跳排查）：只打键名不打值——确认 OpenIddict 回调结果里
-    // 令牌到底存放在哪些键下（result.Properties.GetTokenValue("access_token") 为空导致
-    // 会话票据无 AT、代理层 401 循环）。排查完成后移除。
-    logger.LogInformation(
-        "回调诊断：Properties.Items 键=[{Keys}]",
-        string.Join(",", result.Properties?.Items.Keys.OrderBy(key => key) ?? Enumerable.Empty<string>()));
-
     var (identity, isAdmin) = AdminSessionIdentity.Build(result.Principal);
 
     // AdminRole 门禁：判定在服务端回调处强制，不依赖前端隐藏。失败关闭——roles 缺失（例如
@@ -236,14 +229,22 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
     }
 
     // 令牌写入会话票据（DataProtection 保护）：登出时据此向 IDP 撤销 refresh/access token。
+    // result.Properties 在 Succeeded 分支非空（诊断日志同样直接解引用），可空警告源于编译器
+    // 对 AuthenticateResult.Properties 的保守标注，显式断言。
+    var resultProperties = result.Properties!;
+    logger.LogInformation(
+        "回调诊断：AT={HasAt} RT={HasRt} Properties.Items 键=[{Keys}]",
+        resultProperties.GetTokenValue(SessionTokens.AccessTokenName) is not null,
+        resultProperties.GetTokenValue(SessionTokens.RefreshTokenName) is not null,
+        string.Join(",", resultProperties.Items.Keys.OrderBy(key => key)));
     var properties = new AuthenticationProperties();
     var tokens = new List<AuthenticationToken>();
-    if (result.Properties.GetTokenValue(SessionTokens.AccessTokenName) is { } accessToken)
+    if (resultProperties.GetTokenValue(SessionTokens.AccessTokenName) is { } accessToken)
     {
         tokens.Add(new AuthenticationToken { Name = SessionTokens.AccessTokenName, Value = accessToken });
     }
 
-    if (result.Properties.GetTokenValue(SessionTokens.RefreshTokenName) is { } refreshToken)
+    if (resultProperties.GetTokenValue(SessionTokens.RefreshTokenName) is { } refreshToken)
     {
         tokens.Add(new AuthenticationToken { Name = SessionTokens.RefreshTokenName, Value = refreshToken });
     }
