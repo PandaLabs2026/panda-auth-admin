@@ -173,6 +173,21 @@ public class RouteGuardTests
     }
 
     [Fact]
+    public async Task Authenticated_AdminProxyEndpoint_ActivatesAndMapsUpstreamUnreachable()
+    {
+        // 钉住 typed client 的 DI 激活路径：曾因构造注入 Uri 不可解析，每个代理请求 500
+        // （2026-09-19 生产事故；单元测试手工 new 构造绕过了激活，故必须经真实管线测）。
+        // WAF 的认证 stub 没有会话票据（无 AT）→ 代理按未认证折算 401。
+        // 该断言足以钉住激活路径：DI 激活失败时这里是 500（未处理异常），而非 401。
+        using var factory = new GuardFactory(authenticated: true);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/admin/api/users");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
     public async Task LoginChallenge_RateLimited_AfterTenPerMinute()
     {
         using var factory = new GuardFactory(authenticated: false);

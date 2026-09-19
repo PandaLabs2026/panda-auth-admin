@@ -23,10 +23,15 @@ public sealed class AdminApiProxy(
     HttpClient httpClient,
     OpenIddictClientService openIddict,
     IHttpContextAccessor httpContextAccessor,
-    Uri issuer,
+    IConfiguration configuration,
     ILogger<AdminApiProxy> logger)
 {
     private const string ProviderName = "pandaauth";
+
+    // issuer 从配置读取而非构造注入 Uri——typed client 由 DI 激活，Uri 类型不可解析
+    //（2026-09-19 生产实测：每个代理端点请求 500「Unable to resolve service for type 'System.Uri'」，
+    //  单元测试手工 new 构造因此未暴露；WAF 集成测试现覆盖 GET /admin/api/users 钉住激活路径）。
+    private Uri Issuer { get; } = new(configuration["Auth:Issuer"] ?? "http://localhost:9004/");
 
     public async Task<IResult> ForwardAsync(
         string pathWithQuery,
@@ -121,7 +126,7 @@ public sealed class AdminApiProxy(
         {
             var result = await openIddict.AuthenticateWithRefreshTokenAsync(new OpenIddictClientModels.RefreshTokenAuthenticationRequest
             {
-                Issuer = issuer,
+                Issuer = Issuer,
                 ProviderName = ProviderName,
                 RefreshToken = current.RefreshToken,
                 CancellationToken = cancellationToken,

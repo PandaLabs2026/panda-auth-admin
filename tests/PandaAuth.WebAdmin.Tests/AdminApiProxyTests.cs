@@ -4,6 +4,7 @@ using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -69,13 +70,19 @@ public class AdminApiProxyTests
     }
 
     private static AdminApiProxy CreateProxy(StubHttpMessageHandler handler, IHttpContextAccessor accessor)
-        => new(
+    {
+        // 与生产同构：issuer 经 IConfiguration 提供给代理（不再构造注入 Uri）。
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Auth:Issuer"] = Issuer.ToString() })
+            .Build();
+        return new AdminApiProxy(
             // 生产侧 BaseAddress 由 AddHttpClient 配置；单测手动补齐。
             new HttpClient(handler) { BaseAddress = Issuer },
             null!,
             accessor,
-            Issuer,
+            configuration,
             new Logger<AdminApiProxy>(Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance));
+    }
 
     private static async Task<int> StatusOfAsync(IResult result)
     {
