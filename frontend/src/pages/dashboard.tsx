@@ -54,6 +54,19 @@ export default function DashboardPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  // 会话校验期间不渲染完整外壳：未登录者会被立刻全页跳转到 /admin/login（BFF 挑战），
+  // 完整骨架闪现即走曾是首屏观感差的主因（2026-09-19 用户反馈）——加载态只给一枚居中品牌标。
+  if (loading && !session && !error) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <img src="/admin/apple-touch-icon.png" alt="" className="h-12 w-12 rounded-xl animate-pulse" />
+          <span className="text-sm text-muted-foreground">正在验证登录状态…</span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen">
       <header className="border-b bg-card">
@@ -70,7 +83,6 @@ export default function DashboardPage() {
         </div>
       </header>
       <main className="mx-auto max-w-3xl px-6 py-8">
-        {loading && <p className="text-muted-foreground">加载中…</p>}
         {error && <p className="text-destructive">会话服务异常，请刷新重试。</p>}
         {session && (
           <>
