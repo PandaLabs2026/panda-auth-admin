@@ -361,6 +361,90 @@ app.MapPost("/admin/api/users/{id}/reset-password", async (string id, HttpContex
     return await proxy.ForwardAsync(PandaAuthAdminApi.UserResetPassword(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
 });
 
+app.MapPost("/admin/api/users", async (HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.Users, HttpMethod.Post, await ReadJsonBodyAsync(ctx));
+});
+
+app.MapPut("/admin/api/users/{id}/roles", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.UserRoles(id), HttpMethod.Put, await ReadJsonBodyAsync(ctx));
+});
+
+app.MapPost("/admin/api/users/{id}/unlock", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.UserUnlock(id), HttpMethod.Post);
+});
+
+app.MapPut("/admin/api/users/{id}/profile", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(id), HttpMethod.Put, await ReadJsonBodyAsync(ctx));
+});
+
+app.MapPost("/admin/api/users/{id}/reset-2fa", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.UserResetTwoFactor(id), HttpMethod.Post);
+});
+
+app.MapPost("/admin/api/users/{id}/deactivate", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.UserDeactivate(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
+});
+
 app.MapGet("/admin/api/clients", (HttpContext ctx, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.Clients + ctx.Request.QueryString.Value, HttpMethod.Get));
 

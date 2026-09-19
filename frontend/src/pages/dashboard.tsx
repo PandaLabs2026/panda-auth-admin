@@ -27,7 +27,7 @@ type Discovery = {
 
 /** 管理模块能力说明（首页预告卡）。 */
 const MODULES = [
-  { id: "users", label: "用户管理", desc: "列表 / 搜索 / 冻结解冻 / 重置密码" },
+  { id: "users", label: "用户管理", desc: "建号 / 角色 / 冻结 / 解锁 / 资料 / 2FA / 注销 / 重置密码" },
   { id: "clients", label: "客户端管理", desc: "回调白名单 / scope / 密钥轮换" },
   { id: "audit", label: "审计查询", desc: "登录日志与管理操作日志（只读）" },
 ] as const

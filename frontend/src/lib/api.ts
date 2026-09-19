@@ -50,6 +50,10 @@ export async function apiSend<T>(method: "POST" | "PUT", path: string, body?: un
     }
     throw new Error(detail)
   }
+  // 与 apiGet 同款守卫：会话过期时防伪端点匿名可用（发令牌无需登录），随后的变更请求
+  // 被 302 到登录页 HTML（状态 200）——没有这道检查会变成莫名的 JSON 解析错误。
+  const contentType = response.headers.get("content-type") ?? ""
+  if (!contentType.includes("application/json")) unauthorized()
   return (await response.json()) as T
 }
 
@@ -87,6 +91,25 @@ export type ClientDetail = ClientSummary & {
 
 export type ClientOptions = { permissionGroups: { group: string; options: string[] }[] }
 
+export type CreateUserRequest = {
+  userName: string
+  email?: string | null
+  nickname?: string | null
+  region?: string | null
+  password?: string | null
+  grantAdminRole: boolean
+}
+
+export type CreateUserResponse = { id: string; userName: string; email: string | null; password: string | null }
+
+/** 角色全量替换：roles 即目标用户的完整角色集合。 */
+export type UserRolesRequest = { roles: string[] }
+
+/** 资料编辑 PUT 全量语义：每个字段携带最终值，null 即清空。 */
+export type UserProfileRequest = { email?: string | null; nickname?: string | null; region?: string | null }
+
+export type DeactivateRequest = { confirmUserName: string }
+
 export type LoginLogEntry = {
   id: number
   userId: string | null
@@ -112,3 +135,25 @@ export type AdminAuditEntry = {
 }
 
 export const USER_STATUS: Record<number, string> = { 0: "正常", 1: "已冻结", 2: "已注销" }
+
+/** 注册渠道展示名（与 share 的 RegisterChannel 枚举对应）。 */
+export const REGISTER_CHANNEL: Record<number, string> = { 0: "密码注册", 1: "短信注册", 2: "邮箱注册", 3: "管理员创建" }
+
+/**
+ * 管理审计动作中文展示（与 share 的 AdminAuditAction 常量一一对应；契约注释要求的同步映射）。
+ * 未知动作回退原文，新增动作时在这里补一行。
+ */
+export const AUDIT_ACTION: Record<string, string> = {
+  "user.create": "创建用户",
+  "user.freeze": "冻结用户",
+  "user.unfreeze": "解冻用户",
+  "user.reset_password": "重置密码",
+  "user.update_roles": "变更角色",
+  "user.unlock": "解锁账号",
+  "user.update_profile": "更新资料",
+  "user.reset_2fa": "重置两步验证",
+  "user.deactivate": "注销账号",
+  "client.update_uris": "修改回调白名单",
+  "client.update_permissions": "修改客户端权限",
+  "client.rotate_secret": "轮换客户端密钥",
+}

@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { apiGet, type AdminAuditEntry, type LoginLogEntry, type PageResult } from "@/lib/api"
+import { apiGet, AUDIT_ACTION, type AdminAuditEntry, type LoginLogEntry, type PageResult } from "@/lib/api"
 
 /**
  * 审计查询（0.3）：登录日志与管理操作日志双视图，只读 + 时间过滤 + 分页。
@@ -17,21 +17,26 @@ export default function AuditPage() {
   const [logins, setLogins] = useState<PageResult<LoginLogEntry> | null>(null)
   const [admin, setAdmin] = useState<PageResult<AdminAuditEntry> | null>(null)
   const [error, setError] = useState<string | null>(null)
+  // 时间过滤输入即触发：用序号丢弃乱序返回的旧响应，避免表格闪回旧过滤条件的结果。
+  const loadSeq = useRef(0)
   const pageSize = 20
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current
     try {
       setError(null)
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
       if (from) params.set("from", new Date(from).toISOString())
       if (to) params.set("to", new Date(to).toISOString())
       if (tab === "logins") {
-        setLogins(await apiGet<PageResult<LoginLogEntry>>(`/admin/api/audit/logins?${params}`))
+        const data = await apiGet<PageResult<LoginLogEntry>>(`/admin/api/audit/logins?${params}`)
+        if (seq === loadSeq.current) setLogins(data)
       } else {
-        setAdmin(await apiGet<PageResult<AdminAuditEntry>>(`/admin/api/audit/admin?${params}`))
+        const data = await apiGet<PageResult<AdminAuditEntry>>(`/admin/api/audit/admin?${params}`)
+        if (seq === loadSeq.current) setAdmin(data)
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "加载失败")
+      if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : "加载失败")
     }
   }, [tab, page, from, to])
 
@@ -149,7 +154,10 @@ export default function AuditPage() {
                   <tr key={log.id} className="border-b last:border-0 hover:bg-muted/20">
                     <td className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString("zh-CN")}</td>
                     <td className="px-4 py-2.5">{log.actorUserName ?? log.actorUserId}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs">{log.action}</td>
+                    <td className="whitespace-nowrap px-4 py-2.5 text-xs">
+                      <span>{AUDIT_ACTION[log.action] ?? log.action}</span>
+                      <span className="ml-1.5 font-mono text-muted-foreground">{log.action}</span>
+                    </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
                       {log.targetType}:{log.targetId ?? ""}
                     </td>
