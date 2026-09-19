@@ -158,13 +158,16 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{new Date(user.createdAt).toLocaleString("zh-CN")}</td>
                   <td className="space-x-2 px-4 py-3 text-right">
-                    <Button variant="outline" size="sm" disabled={busy} onClick={() => void toggleFreeze(user)}>
-                      {user.status === 1 ? "解冻" : "冻结"}
-                    </Button>
+                    {/* 自己那一行不提供冻结/重置（server 侧另有硬门禁）：两个操作都会把当前管理会话锁在门外 */}
                     {me?.subject !== user.id && (
-                      <Button variant="outline" size="sm" disabled={busy} onClick={() => void resetPassword(user)}>
-                        重置密码
-                      </Button>
+                      <>
+                        <Button variant="outline" size="sm" disabled={busy} onClick={() => void toggleFreeze(user)}>
+                          {user.status === 1 ? "解冻" : "冻结"}
+                        </Button>
+                        <Button variant="outline" size="sm" disabled={busy} onClick={() => void resetPassword(user)}>
+                          重置密码
+                        </Button>
+                      </>
                     )}
                   </td>
                 </tr>
