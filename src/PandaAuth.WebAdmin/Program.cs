@@ -210,6 +210,13 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
         return Results.Redirect("/admin/login");
     }
 
+    // 临时诊断（2026-09-19 弹跳排查）：只打键名不打值——确认 OpenIddict 回调结果里
+    // 令牌到底存放在哪些键下（result.Properties.GetTokenValue("access_token") 为空导致
+    // 会话票据无 AT、代理层 401 循环）。排查完成后移除。
+    logger.LogInformation(
+        "回调诊断：Properties.Items 键=[{Keys}]",
+        string.Join(",", result.Properties?.Items.Keys.OrderBy(key => key) ?? Enumerable.Empty<string>()));
+
     var (identity, isAdmin) = AdminSessionIdentity.Build(result.Principal);
 
     // AdminRole 门禁：判定在服务端回调处强制，不依赖前端隐藏。失败关闭——roles 缺失（例如
