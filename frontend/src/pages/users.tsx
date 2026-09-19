@@ -6,6 +6,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { USER_STATUS, apiGet, apiSend, type PageResult, type UserDetail, type UserSummary } from "@/lib/api"
 
+/** 当前会话主体：用于在列表里隐藏「自己」的重置按钮（server 侧另有硬门禁）。 */
+type Me = { subject: string }
+
 /**
  * 用户管理（0.3）：列表/搜索/详情/冻结解冻/重置密码。
  * 冻结与重置都会使该用户的全部令牌立即失效（server 侧联动批量吊销）。
@@ -19,7 +22,13 @@ export default function UsersPage() {
   const [detail, setDetail] = useState<UserDetail | null>(null)
   const [newPassword, setNewPassword] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [me, setMe] = useState<Me | null>(null)
   const pageSize = 20
+
+  useEffect(() => {
+    // 静默获取：401 时 apiGet 自会跳登录，这里不额外处理。
+    apiGet<Me>("/admin/api/session").then(setMe).catch(() => setMe(null))
+  }, [])
 
   const load = useCallback(async () => {
     try {
@@ -152,9 +161,11 @@ export default function UsersPage() {
                     <Button variant="outline" size="sm" disabled={busy} onClick={() => void toggleFreeze(user)}>
                       {user.status === 1 ? "解冻" : "冻结"}
                     </Button>
-                    <Button variant="outline" size="sm" disabled={busy} onClick={() => void resetPassword(user)}>
-                      重置密码
-                    </Button>
+                    {me?.subject !== user.id && (
+                      <Button variant="outline" size="sm" disabled={busy} onClick={() => void resetPassword(user)}>
+                        重置密码
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
