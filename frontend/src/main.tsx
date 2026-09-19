@@ -6,6 +6,9 @@ import ClientsPage from "@/pages/clients"
 import DashboardPage from "@/pages/dashboard"
 import LoginPage from "@/pages/login"
 import UsersPage from "@/pages/users"
+// Tailwind v4 入口（含 shadcn 设计令牌）。骨架时代起就漏了这行 import——
+// 构建因此从不产出 CSS 文件，整个管理台一直以无样式形态运行（2026-09-19 才定位）。
+import "./index.css"
 
 // 部署基路径 /admin/（Caddy 将 /admin/* 反代到本服务）。
 // 认证由 BFF 兜底：各页在数据 401 时全页跳 /admin/login，未登录者直接访问
