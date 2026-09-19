@@ -1,4 +1,6 @@
+import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
+import { apiGet } from "@/lib/api"
 
 import { Button } from "@/components/ui/button"
 
@@ -38,9 +40,17 @@ async function logout() {
  * 路由切换只替换 <Outlet/>，导航与登出常驻（此前外壳只存在于概览页，
  * 进入子模块后侧边栏整体消失，2026-09-19 生产走查发现）。
  */
+type Session = { subject: string; name: string | null; email: string | null; nickname: string | null; roles: string[] }
+
 export default function AppShell() {
   const { pathname } = useLocation()
   const title = TITLES[pathname] ?? "管理后台"
+  const [session, setSession] = useState<Session | null>(null)
+
+  useEffect(() => {
+    // 静默获取当前用户（401 时 apiGet 自会跳登录）；仅用于顶栏展示。
+    apiGet<Session>("/admin/api/session").then(setSession).catch(() => setSession(null))
+  }, [])
 
   return (
     <div className="flex min-h-screen bg-muted/30">
@@ -74,6 +84,19 @@ export default function AppShell() {
           <div className="flex items-center gap-2">
             {/* 全页跳转（非 SPA 路由）：改密页在 IDP（/account/*），凭据是 OIDC 登录时
                 建立的 IDP 会话 Cookie；成功后令牌全吊销，管理台会话一并失效需重新登录。 */}
+            {session && (
+              <span className="hidden items-center gap-2 text-xs text-muted-foreground sm:flex">
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                  {(session.nickname ?? session.name ?? session.email ?? "?").slice(0, 1).toUpperCase()}
+                </span>
+                {session.nickname ?? session.name ?? session.email}
+                {session.roles.length > 0 && (
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                    {session.roles[0]}
+                  </span>
+                )}
+              </span>
+            )}
             <Button variant="outline" size="sm" onClick={() => window.location.assign("/account/change-password")}>
               修改密码
             </Button>
