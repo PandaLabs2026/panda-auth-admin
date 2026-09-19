@@ -229,17 +229,18 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
     }
 
     // 令牌写入会话票据（DataProtection 保护）：登出时据此向 IDP 撤销 refresh/access token。
-    // result.Properties 在 Succeeded 分支非空（诊断日志同样直接解引用），可空警告源于编译器
-    // 对 AuthenticateResult.Properties 的保守标注，显式断言。
+    // ⚠️ OpenIddict 客户端把 AT 存在 backchannel_access_token 键下——GetTokenValue("access_token")
+    // 恒为 null（2026-09-19 生产诊断实证：Properties 键为 .Token.backchannel_access_token）。
+    // refresh_token 键名恰好一致可直接取。会话票据内部仍用 SessionTokens 常量存储（自持命名，
+    // 下游 proxy / 登出撤销的读取不变）。
     var resultProperties = result.Properties!;
     logger.LogInformation(
-        "回调诊断：AT={HasAt} RT={HasRt} Properties.Items 键=[{Keys}]",
-        resultProperties.GetTokenValue(SessionTokens.AccessTokenName) is not null,
-        resultProperties.GetTokenValue(SessionTokens.RefreshTokenName) is not null,
-        string.Join(",", resultProperties.Items.Keys.OrderBy(key => key)));
+        "回调诊断：AT={HasAt} RT={HasRt}",
+        resultProperties.GetTokenValue("backchannel_access_token") is not null,
+        resultProperties.GetTokenValue(SessionTokens.RefreshTokenName) is not null);
     var properties = new AuthenticationProperties();
     var tokens = new List<AuthenticationToken>();
-    if (resultProperties.GetTokenValue(SessionTokens.AccessTokenName) is { } accessToken)
+    if (resultProperties.GetTokenValue("backchannel_access_token") is { } accessToken)
     {
         tokens.Add(new AuthenticationToken { Name = SessionTokens.AccessTokenName, Value = accessToken });
     }
