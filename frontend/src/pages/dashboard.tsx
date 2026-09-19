@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { NavLink } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -44,7 +45,15 @@ async function logout() {
   window.location.assign("/admin/login")
 }
 
-/** 0.3 才实装的管理模块：侧边栏导航项 + 主区「即将上线」卡共用同一份定义。 */
+/** 侧边栏导航：概览与三个 0.3 管理模块（均已实装）。 */
+const NAV = [
+  { to: "/", label: "概览" },
+  { to: "/users", label: "用户管理" },
+  { to: "/clients", label: "客户端管理" },
+  { to: "/audit", label: "审计查询" },
+] as const
+
+/** 管理模块能力说明（首页预告卡）。 */
 const MODULES = [
   { id: "users", label: "用户管理", desc: "列表 / 搜索 / 冻结解冻 / 重置密码" },
   { id: "clients", label: "客户端管理", desc: "回调白名单 / scope / 密钥轮换" },
@@ -52,7 +61,7 @@ const MODULES = [
 ] as const
 
 /**
- * 管理后台概览（0.2：登录闭环 + 真实身份与 IDP 状态；管理操作在 0.3 实装）。
+ * 管理后台概览：登录闭环 + 真实身份与 IDP 状态；管理操作见侧边栏各模块。
  */
 export default function DashboardPage() {
   const [session, setSession] = useState<Session | null>(null)
@@ -100,28 +109,29 @@ export default function DashboardPage() {
 
   return (
     <div className="flex min-h-screen bg-muted/30">
-      {/* 侧边栏：0.3 模块以禁用态占位，先立起管理台的结构预期 */}
+      {/* 侧边栏：概览 + 三个管理模块（0.3 实装），当前路由高亮 */}
       <aside className="hidden w-56 shrink-0 flex-col border-r bg-card md:flex">
         <div className="flex items-center gap-2.5 px-5 py-5 text-base font-bold text-primary">
           <img src="/admin/apple-touch-icon.png" alt="" className="h-8 w-8 rounded-lg" />
           PandaAuth
         </div>
         <nav className="flex-1 space-y-1 px-3 text-sm">
-          <span className="flex items-center justify-between rounded-md bg-primary/10 px-3 py-2 font-medium text-primary">
-            概览
-          </span>
-          {MODULES.map((module) => (
-            <span
-              key={module.id}
-              className="flex cursor-not-allowed items-center justify-between rounded-md px-3 py-2 text-muted-foreground/70"
-              title="0.3 实装"
+          {NAV.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.to === "/"}
+              className={({ isActive }) =>
+                `flex items-center rounded-md px-3 py-2 ${
+                  isActive ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted/50"
+                }`
+              }
             >
-              {module.label}
-              <span className="rounded bg-muted px-1.5 py-0.5 text-[10px]">0.3</span>
-            </span>
+              {item.label}
+            </NavLink>
           ))}
         </nav>
-        <div className="border-t px-5 py-3 text-xs text-muted-foreground">v0.2 · 管理后台</div>
+        <div className="border-t px-5 py-3 text-xs text-muted-foreground">v0.3 · 管理后台</div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
@@ -230,8 +240,8 @@ export default function DashboardPage() {
           {/* 0.3 模块预告：与侧边栏同源定义 */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-sm">管理模块 · 0.3 实装</CardTitle>
-              <CardDescription>当前版本交付登录闭环；以下模块随 server Admin API（share 契约先行）实装</CardDescription>
+              <CardTitle className="text-sm">管理模块</CardTitle>
+              <CardDescription>点击侧边栏进入对应模块；全部变更操作均记录管理审计</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-3">
               {MODULES.map((module) => (

@@ -73,6 +73,17 @@ if (string.IsNullOrWhiteSpace(clientSecret))
 // 不能留给 AddHttpClient 的 configure 委托（它只在解析该类型时才执行）。
 builder.Services.AddTokenRevocation(builder.Configuration, new TokenRevocationOptions(issuer, clientId, clientSecret));
 
+// Admin 数据 API 代理（webadmin 0.3）：直连 IDP 内部地址（同 host network，不经公网/Caddy）。
+// 基址可配（Auth:IdpInternalBaseAddress），默认回环 9004——公网形态下该前缀在 Caddy 路由表外，
+// IDP 侧另有 Bearer + admin 角色门禁，双保险。
+var idpInternalBase = builder.Configuration["Auth:IdpInternalBaseAddress"] ?? "http://127.0.0.1:9004/";
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient<AdminApiProxy>(client =>
+{
+    client.BaseAddress = new Uri(idpInternalBase);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+
 // 管理后台 BFF：OIDC 客户端（授权码 + PKCE + 刷新令牌），由 panda-auth-server 的 Seeder 预置 admin-web。
 builder.Services.AddOpenIddict()
     .AddClient(options =>
@@ -288,6 +299,111 @@ app.MapPost("/admin/api/logout", async (HttpContext context, TokenRevocationClie
         new AuthenticationProperties { RedirectUri = "/admin/" },
         [OpenIddictClientAspNetCoreDefaults.AuthenticationScheme]);
 });
+
+// ---- Admin 数据 API 代理端点（webadmin 0.3）----
+// 全部落在 FallbackPolicy 下（需已认证）；变更类（POST/PUT）先验防伪再转发 JSON 体；
+// GET 透传查询串。上游路径取自 share 契约常量（PandaAuthAdminApi），两端不写 URL 字面量。
+async Task<string?> ReadJsonBodyAsync(HttpContext ctx)
+{
+    if (ctx.Request.ContentLength is null or 0)
+    {
+        return null;
+    }
+
+    using var reader = new StreamReader(ctx.Request.Body);
+    return await reader.ReadToEndAsync(ctx.RequestAborted);
+}
+
+app.MapGet("/admin/api/users", (HttpContext ctx, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.Users + ctx.Request.QueryString.Value, HttpMethod.Get));
+
+app.MapGet("/admin/api/users/{id}", (string id, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.User(id), HttpMethod.Get));
+
+app.MapPost("/admin/api/users/{id}/status", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.UserStatus(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
+});
+
+app.MapPost("/admin/api/users/{id}/reset-password", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.UserResetPassword(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
+});
+
+app.MapGet("/admin/api/clients", (HttpContext ctx, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.Clients + ctx.Request.QueryString.Value, HttpMethod.Get));
+
+app.MapGet("/admin/api/clients/options", (AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.ClientOptions, HttpMethod.Get));
+
+app.MapGet("/admin/api/clients/{clientId}", (string clientId, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.Client(clientId), HttpMethod.Get));
+
+app.MapPut("/admin/api/clients/{clientId}/redirect-uris", async (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.ClientRedirectUris(clientId), HttpMethod.Put, await ReadJsonBodyAsync(ctx));
+});
+
+app.MapPut("/admin/api/clients/{clientId}/permissions", async (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.ClientPermissions(clientId), HttpMethod.Put, await ReadJsonBodyAsync(ctx));
+});
+
+app.MapPost("/admin/api/clients/{clientId}/rotate-secret", async (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.ClientRotateSecret(clientId), HttpMethod.Post);
+});
+
+app.MapGet("/admin/api/audit/logins", (HttpContext ctx, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.AuditLogins + ctx.Request.QueryString.Value, HttpMethod.Get));
+
+app.MapGet("/admin/api/audit/admin", (HttpContext ctx, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.AuditAdmin + ctx.Request.QueryString.Value, HttpMethod.Get));
 
 // 防伪令牌发放：登录之前把令牌发给 SPA（要求认证会形成鸡生蛋）。
 app.MapGet("/admin/api/antiforgery", (HttpContext context) =>
