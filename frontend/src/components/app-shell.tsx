@@ -71,9 +71,16 @@ export default function AppShell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b bg-card px-6 py-3">
           <h1 className="text-sm font-semibold">{title}</h1>
-          <Button variant="outline" size="sm" onClick={logout}>
-            退出登录
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* 全页跳转（非 SPA 路由）：改密页在 IDP（/account/*），凭据是 OIDC 登录时
+                建立的 IDP 会话 Cookie；成功后令牌全吊销，管理台会话一并失效需重新登录。 */}
+            <Button variant="outline" size="sm" onClick={() => window.location.assign("/account/change-password")}>
+              修改密码
+            </Button>
+            <Button variant="outline" size="sm" onClick={logout}>
+              退出登录
+            </Button>
+          </div>
         </header>
         <main className="flex-1 p-6">
           <Outlet />
