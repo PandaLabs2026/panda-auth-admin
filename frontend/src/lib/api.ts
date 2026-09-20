@@ -17,9 +17,17 @@ function unauthorized(): never {
   throw new Error("unauthorized")
 }
 
+/** 管理 API 的 403 在 BFF 角色门禁已建立后表示 MFA 不满足；到 IDP 完成 step-up 再回原操作。 */
+function mfaRequired(): never {
+  const returnUrl = encodeURIComponent(window.location.pathname + window.location.search)
+  window.location.assign(`/account/mfa?returnUrl=${returnUrl}`)
+  throw new Error("mfa_required")
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { "X-Requested-With": "XMLHttpRequest" } })
   if (response.status === 401) unauthorized()
+  if (response.status === 403) mfaRequired()
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   // 会话 Cookie 过期时 BFF 返回 302 → fetch 跟随重定向最终拿到登录页 HTML（200）：
   // JSON 解析必然失败，统一折算为带 returnUrl 的登录跳转而不是莫名的解析报错。
@@ -40,6 +48,7 @@ export async function apiSend<T>(method: "POST" | "PUT", path: string, body?: un
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (response.status === 401) unauthorized()
+  if (response.status === 403) mfaRequired()
   if (!response.ok) {
     let detail = `HTTP ${response.status}`
     try {
