@@ -97,7 +97,7 @@ export default function AppShell() {
                 )}
               </span>
             )}
-            <Button variant="outline" size="sm" onClick={() => window.location.assign("/account/change-password")}>
+            <Button variant="outline" size="sm" onClick={() => window.location.assign("/account/change-password?returnUrl=/admin")}>
               修改密码
             </Button>
             <Button variant="outline" size="sm" onClick={logout}>
