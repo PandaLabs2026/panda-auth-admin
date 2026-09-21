@@ -10,7 +10,9 @@ import {
   apiGet,
   apiSend,
   type CreateUserResponse,
+  type ClaimRequest,
   type PageResult,
+  type UserClaim,
   type UserDetail,
   type UserSummary,
 } from "@/lib/api"
@@ -56,6 +58,9 @@ export default function UsersPage() {
   const [draft, setDraft] = useState<CreateDraft>(EMPTY_CREATE)
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState({ email: "", nickname: "", region: "" })
+  const [claims, setClaims] = useState<UserClaim[]>([])
+  const [claimDraft, setClaimDraft] = useState<ClaimRequest>({ claimType: "panda:", claimValue: "", scope: "api" })
+  const [claimsBusy, setClaimsBusy] = useState(false)
   // 搜索/翻页是输入即触发：用序号丢弃乱序返回的旧响应，避免列表闪回旧查询的结果。
   const loadSeq = useRef(0)
   const pageSize = 20
@@ -87,9 +92,52 @@ export default function UsersPage() {
     try {
       setNewPassword(null)
       setEditingProfile(false)
-      setDetail(await apiGet<UserDetail>(`/admin/api/users/${id}`))
+      const [user, userClaims] = await Promise.all([
+        apiGet<UserDetail>(`/admin/api/users/${id}`),
+        apiGet<UserClaim[]>(`/admin/api/users/${id}/claims`),
+      ])
+      setDetail(user)
+      setClaims(userClaims)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "详情加载失败")
+    }
+  }
+
+  async function addClaim() {
+    if (!detail) return
+    const request = {
+      claimType: claimDraft.claimType.trim(),
+      claimValue: claimDraft.claimValue.trim(),
+      scope: claimDraft.scope.trim(),
+    }
+    if (!request.claimType || !request.claimValue || !request.scope) {
+      setError("Claim 类型、值和 scope 均不能为空")
+      return
+    }
+    setClaimsBusy(true)
+    try {
+      setError(null)
+      const created = await apiSend<UserClaim>("POST", `/admin/api/users/${detail.id}/claims`, request)
+      setClaims((items) => [...items, created])
+      setClaimDraft({ claimType: "panda:", claimValue: "", scope: "api" })
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "添加 Claim 失败")
+    } finally {
+      setClaimsBusy(false)
+    }
+  }
+
+  async function removeClaim(claim: UserClaim) {
+    if (!detail || !window.confirm(`确认删除 Claim ${claim.claimType}？`)) return
+    setClaimsBusy(true)
+    try {
+      setError(null)
+      await apiSend("DELETE", `/admin/api/users/${detail.id}/claims/${claim.id}`)
+      setClaims((items) => items.filter((item) => item.id !== claim.id))
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "删除 Claim 失败")
+    } finally {
+      setClaimsBusy(false)
     }
   }
 
@@ -569,6 +617,66 @@ export default function UsersPage() {
                 取消
               </Button>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {detail && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">自定义 Claims</CardTitle>
+            <CardDescription>
+              仅允许 panda: 命名空间；Claim 只有在客户端申请对应 scope 时才会进入 Token。添加和删除需要近期完成 WebAuthn。
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {claims.length > 0 ? (
+              <div className="overflow-x-auto rounded border">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-muted/50 text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">类型</th>
+                      <th className="px-3 py-2 font-medium">值</th>
+                      <th className="px-3 py-2 font-medium">Scope</th>
+                      <th className="px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {claims.map((claim) => (
+                      <tr key={claim.id} className="border-t">
+                        <td className="px-3 py-2 font-mono text-xs">{claim.claimType}</td>
+                        <td className="px-3 py-2">{claim.claimValue}</td>
+                        <td className="px-3 py-2 font-mono text-xs">{claim.scope}</td>
+                        <td className="px-3 py-2 text-right">
+                          <Button variant="outline" size="sm" disabled={claimsBusy} onClick={() => void removeClaim(claim)}>
+                            删除
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">暂无自定义 Claims。</p>
+            )}
+            {detail.status !== 2 && (
+              <div className="grid gap-3 sm:grid-cols-[1.2fr_1fr_0.7fr_auto] sm:items-end">
+                <div className="grid gap-1.5">
+                  <Label htmlFor="claim-type">类型</Label>
+                  <Input id="claim-type" value={claimDraft.claimType} onChange={(event) => setClaimDraft({ ...claimDraft, claimType: event.target.value })} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="claim-value">值</Label>
+                  <Input id="claim-value" value={claimDraft.claimValue} onChange={(event) => setClaimDraft({ ...claimDraft, claimValue: event.target.value })} />
+                </div>
+                <div className="grid gap-1.5">
+                  <Label htmlFor="claim-scope">Scope</Label>
+                  <Input id="claim-scope" value={claimDraft.scope} onChange={(event) => setClaimDraft({ ...claimDraft, scope: event.target.value })} />
+                </div>
+                <Button disabled={claimsBusy || busy} onClick={() => void addClaim()}>添加</Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

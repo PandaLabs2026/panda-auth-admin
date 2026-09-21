@@ -36,7 +36,7 @@ export async function apiGet<T>(path: string): Promise<T> {
   return (await response.json()) as T
 }
 
-export async function apiSend<T>(method: "POST" | "PUT", path: string, body?: unknown): Promise<T> {
+export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   const token = await fetchAntiforgeryToken()
   const response = await fetch(path, {
     method,
@@ -59,6 +59,7 @@ export async function apiSend<T>(method: "POST" | "PUT", path: string, body?: un
     }
     throw new Error(detail)
   }
+  if (response.status === 204) return undefined as T
   // 与 apiGet 同款守卫：会话过期时防伪端点匿名可用（发令牌无需登录），随后的变更请求
   // 被 302 到登录页 HTML（状态 200）——没有这道检查会变成莫名的 JSON 解析错误。
   const contentType = response.headers.get("content-type") ?? ""
@@ -88,6 +89,10 @@ export type UserDetail = UserSummary & {
   region: string | null
   updatedAt: string
 }
+
+export type UserClaim = { id: number; userId: string; claimType: string; claimValue: string; scope: string }
+
+export type ClaimRequest = { claimType: string; claimValue: string; scope: string }
 
 export type ClientSummary = { clientId: string; displayName: string | null; clientType: string; consentType: string }
 
