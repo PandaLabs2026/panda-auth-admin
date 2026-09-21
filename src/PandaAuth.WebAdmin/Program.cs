@@ -375,6 +375,68 @@ app.MapPost("/admin/api/users", async (HttpContext ctx, AdminApiProxy proxy) =>
     return await proxy.ForwardAsync(PandaAuthAdminApi.Users, HttpMethod.Post, await ReadJsonBodyAsync(ctx));
 });
 
+app.MapGet("/admin/api/users/{id}/claims", (string id, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(id), HttpMethod.Get));
+
+app.MapPost("/admin/api/users/{id}/claims", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
+});
+
+app.MapDelete("/admin/api/users/{id}/claims/{claimId:long}", async (string id, long claimId, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.UserClaim(id, claimId), HttpMethod.Delete);
+});
+
+app.MapGet("/admin/api/roles/{id}/claims", (string id, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.RoleClaims(id), HttpMethod.Get));
+
+app.MapPost("/admin/api/roles/{id}/claims", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.RoleClaims(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
+});
+
+app.MapDelete("/admin/api/roles/{id}/claims/{claimId:long}", async (string id, long claimId, HttpContext ctx, AdminApiProxy proxy) =>
+{
+    try
+    {
+        await antiforgery.ValidateRequestAsync(ctx);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest();
+    }
+
+    return await proxy.ForwardAsync(PandaAuthAdminApi.RoleClaim(id, claimId), HttpMethod.Delete);
+});
+
 app.MapPut("/admin/api/users/{id}/roles", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
 {
     try
