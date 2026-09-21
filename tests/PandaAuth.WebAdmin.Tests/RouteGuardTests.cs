@@ -187,6 +187,20 @@ public class RouteGuardTests
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/admin/api/users/user-1/claims")]
+    [InlineData("/admin/api/roles/role-1/claims")]
+    public async Task Authenticated_ClaimsProxyEndpoints_AreMappedBeforeProtectedFallback(string path)
+    {
+        using var factory = new GuardFactory(authenticated: true);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(path);
+
+        // 已映射到 BFF 后会进入代理并因测试上下文无 AT 返回 401；若漏映射则会越过兜底授权得到 404。
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     [Fact]
     public async Task LoginChallenge_RateLimited_AfterTenPerMinute()
     {
