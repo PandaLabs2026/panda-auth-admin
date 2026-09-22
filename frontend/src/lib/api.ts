@@ -27,7 +27,6 @@ function mfaRequired(): never {
 export async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { "X-Requested-With": "XMLHttpRequest" } })
   if (response.status === 401) unauthorized()
-  if (response.status === 403) mfaRequired()
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   // 会话 Cookie 过期时 BFF 返回 302 → fetch 跟随重定向最终拿到登录页 HTML（200）：
   // JSON 解析必然失败，统一折算为带 returnUrl 的登录跳转而不是莫名的解析报错。
