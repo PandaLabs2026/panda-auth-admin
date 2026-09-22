@@ -6,6 +6,7 @@ import AuditPage from "@/pages/audit"
 import ClientsPage from "@/pages/clients"
 import DashboardPage from "@/pages/dashboard"
 import LoginPage from "@/pages/login"
+import RolesPage from "@/pages/roles"
 import UsersPage from "@/pages/users"
 // Tailwind v4 入口（含 shadcn 设计令牌）。骨架时代起就漏了这行 import——
 // 构建因此从不产出 CSS 文件，整个管理台一直以无样式形态运行（2026-09-19 才定位）。
@@ -22,6 +23,7 @@ const router = createBrowserRouter(
       children: [
         { path: "/", element: <DashboardPage /> },
         { path: "/users", element: <UsersPage /> },
+        { path: "/roles", element: <RolesPage /> },
         { path: "/clients", element: <ClientsPage /> },
         { path: "/audit", element: <AuditPage /> },
         { path: "*", element: <DashboardPage /> },

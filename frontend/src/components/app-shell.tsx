@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 const NAV = [
   { to: "/", label: "概览" },
   { to: "/users", label: "用户管理" },
+  { to: "/roles", label: "角色管理" },
   { to: "/clients", label: "客户端管理" },
   { to: "/audit", label: "审计查询" },
 ] as const
@@ -15,6 +16,7 @@ const NAV = [
 const TITLES: Record<string, string> = {
   "/": "概览",
   "/users": "用户管理",
+  "/roles": "角色管理",
   "/clients": "客户端管理",
   "/audit": "审计查询",
 }

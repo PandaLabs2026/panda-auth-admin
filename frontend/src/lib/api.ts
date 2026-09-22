@@ -92,6 +92,10 @@ export type UserDetail = UserSummary & {
 
 export type UserClaim = { id: number; userId: string; claimType: string; claimValue: string; scope: string }
 
+export type RoleSummary = { id: string; name: string }
+
+export type RoleClaim = { id: number; roleId: string; claimType: string; claimValue: string; scope: string }
+
 export type ClaimRequest = { claimType: string; claimValue: string; scope: string }
 
 export type ClientSummary = { clientId: string; displayName: string | null; clientType: string; consentType: string }
