@@ -30,6 +30,7 @@ export default function RolesPage() {
   const [error, setError] = useState<string | null>(null)
   const [claimsBusy, setClaimsBusy] = useState(false)
   const [claimsLoading, setClaimsLoading] = useState(false)
+  const [claimsError, setClaimsError] = useState<string | null>(null)
   const loadSeq = useRef(0)
   const claimsSeq = useRef(0)
   const selectedRef = useRef<RoleSummary | null>(null)
@@ -51,6 +52,7 @@ export default function RolesPage() {
         setSelected(null)
         setClaims([])
         setClaimsLoading(false)
+        setClaimsError(null)
       }
     } catch (cause) {
       if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : "加载失败")
@@ -67,14 +69,14 @@ export default function RolesPage() {
     setSelected(role)
     setClaims([])
     setClaimsLoading(true)
+    setClaimsError(null)
     try {
       setError(null)
       const data = await apiGet<RoleClaim[]>(claimsPath(role.id))
       if (seq === claimsSeq.current) setClaims(data)
     } catch (cause) {
-      if (seq === claimsSeq.current) setError(cause instanceof Error ? cause.message : "Claims 加载失败")
-    }
-    finally {
+      if (seq === claimsSeq.current) setClaimsError(cause instanceof Error ? cause.message : "Claims 加载失败")
+    } finally {
       if (seq === claimsSeq.current) setClaimsLoading(false)
     }
   }
@@ -179,6 +181,8 @@ export default function RolesPage() {
           <CardContent className="space-y-4">
             {claimsLoading ? (
               <p className="text-sm text-muted-foreground">正在加载 Claims…</p>
+            ) : claimsError ? (
+              <p className="text-destructive">{claimsError}</p>
             ) : claims.length > 0 ? (
               <div className="overflow-x-auto rounded border">
                 <table className="w-full text-left text-sm">
@@ -198,7 +202,7 @@ export default function RolesPage() {
                 </table>
               </div>
             ) : <p className="text-sm text-muted-foreground">暂无自定义 Claims。</p>}
-            {!claimsLoading && (
+            {!claimsLoading && !claimsError && (
               <div className="grid gap-3 sm:grid-cols-[1.2fr_1fr_0.7fr_auto] sm:items-end">
                 <div className="grid gap-1.5"><Label htmlFor="claim-type">类型</Label><Input id="claim-type" value={claimDraft.claimType} onChange={(event) => setClaimDraft({ ...claimDraft, claimType: event.target.value })} /></div>
                 <div className="grid gap-1.5"><Label htmlFor="claim-value">值</Label><Input id="claim-value" value={claimDraft.claimValue} onChange={(event) => setClaimDraft({ ...claimDraft, claimValue: event.target.value })} /></div>

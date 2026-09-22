@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -73,6 +73,51 @@ describe("RolesPage", () => {
     expect(screen.queryByRole("button", { name: "添加" })).not.toBeInTheDocument()
 
     resolveClaims?.(json([]))
+  })
+
+  it("does not restore Claims from a request superseded by removing the selected role", async () => {
+    let resolveClaims: ((response: Response) => void) | undefined
+    const pendingClaims = new Promise<Response>((resolve) => {
+      resolveClaims = resolve
+    })
+    let directoryRequests = 0
+    vi.stubGlobal("fetch", vi.fn((path: string) => {
+      if (path.startsWith("/admin/api/roles?")) {
+        directoryRequests++
+        return Promise.resolve(json(directoryRequests === 1 ? roles : { items: [], total: 0, page: 1, pageSize: 20 }))
+      }
+      if (path === "/admin/api/roles/role-1/claims") return pendingClaims
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    }))
+    const user = userEvent.setup()
+
+    render(<RolesPage />)
+    await user.click(await screen.findByRole("button", { name: "admin" }))
+    await user.type(screen.getByLabelText("搜索角色"), "removed")
+    await waitFor(() => expect(screen.queryByText("自定义 Claims · admin")).not.toBeInTheDocument())
+
+    resolveClaims?.(json(claims))
+    await act(async () => {
+      await pendingClaims
+    })
+
+    expect(screen.queryByText("panda:department")).not.toBeInTheDocument()
+  })
+
+  it("shows a Claims error without empty-state or write controls", async () => {
+    vi.stubGlobal("fetch", vi.fn((path: string) => {
+      if (path.startsWith("/admin/api/roles?")) return Promise.resolve(json(roles))
+      if (path === "/admin/api/roles/role-1/claims") return Promise.reject(new Error("Claims 加载失败"))
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    }))
+    const user = userEvent.setup()
+
+    render(<RolesPage />)
+    await user.click(await screen.findByRole("button", { name: "admin" }))
+
+    expect(await screen.findByText("Claims 加载失败")).toBeInTheDocument()
+    expect(screen.queryByText("暂无自定义 Claims。")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "添加" })).not.toBeInTheDocument()
   })
 
   it("blocks an empty claim and does not send a write request", async () => {
