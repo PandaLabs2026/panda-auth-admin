@@ -15,6 +15,10 @@ import {
 
 const EMPTY_CLAIM: ClaimRequest = { claimType: "panda:", claimValue: "", scope: "api" }
 
+function claimsPath(roleId: string): string {
+  return `/admin/api/roles/${encodeURIComponent(roleId)}/claims`
+}
+
 /** 角色目录只读；此页只管理已存在角色的自定义 Claims。 */
 export default function RolesPage() {
   const [result, setResult] = useState<PageResult<RoleSummary> | null>(null)
@@ -25,8 +29,10 @@ export default function RolesPage() {
   const [claimDraft, setClaimDraft] = useState<ClaimRequest>(EMPTY_CLAIM)
   const [error, setError] = useState<string | null>(null)
   const [claimsBusy, setClaimsBusy] = useState(false)
+  const [claimsLoading, setClaimsLoading] = useState(false)
   const loadSeq = useRef(0)
   const claimsSeq = useRef(0)
+  const selectedRef = useRef<RoleSummary | null>(null)
   const pageSize = 20
 
   const load = useCallback(async () => {
@@ -38,13 +44,14 @@ export default function RolesPage() {
       const data = await apiGet<PageResult<RoleSummary>>(`/admin/api/roles?${params}`)
       if (seq !== loadSeq.current) return
       setResult(data)
-      setSelected((current) => {
-        if (current && !data.items.some((role) => role.id === current.id)) {
-          setClaims([])
-          return null
-        }
-        return current
-      })
+      const current = selectedRef.current
+      if (current && !data.items.some((role) => role.id === current.id)) {
+        claimsSeq.current++
+        selectedRef.current = null
+        setSelected(null)
+        setClaims([])
+        setClaimsLoading(false)
+      }
     } catch (cause) {
       if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : "加载失败")
     }
@@ -56,14 +63,19 @@ export default function RolesPage() {
 
   async function selectRole(role: RoleSummary) {
     const seq = ++claimsSeq.current
+    selectedRef.current = role
     setSelected(role)
     setClaims([])
+    setClaimsLoading(true)
     try {
       setError(null)
-      const data = await apiGet<RoleClaim[]>(`/admin/api/roles/${role.id}/claims`)
+      const data = await apiGet<RoleClaim[]>(claimsPath(role.id))
       if (seq === claimsSeq.current) setClaims(data)
     } catch (cause) {
       if (seq === claimsSeq.current) setError(cause instanceof Error ? cause.message : "Claims 加载失败")
+    }
+    finally {
+      if (seq === claimsSeq.current) setClaimsLoading(false)
     }
   }
 
@@ -81,7 +93,7 @@ export default function RolesPage() {
     setClaimsBusy(true)
     try {
       setError(null)
-      const created = await apiSend<RoleClaim>("POST", `/admin/api/roles/${selected.id}/claims`, request)
+      const created = await apiSend<RoleClaim>("POST", claimsPath(selected.id), request)
       setClaims((items) => [...items, created])
       setClaimDraft(EMPTY_CLAIM)
     } catch (cause) {
@@ -96,7 +108,7 @@ export default function RolesPage() {
     setClaimsBusy(true)
     try {
       setError(null)
-      await apiSend("DELETE", `/admin/api/roles/${selected.id}/claims/${claim.id}`)
+      await apiSend("DELETE", `${claimsPath(selected.id)}/${claim.id}`)
       setClaims((items) => items.filter((item) => item.id !== claim.id))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "删除 Claim 失败")
@@ -165,7 +177,9 @@ export default function RolesPage() {
             <CardDescription>仅允许 panda: 命名空间；添加和删除需要近期完成 WebAuthn。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {claims.length > 0 ? (
+            {claimsLoading ? (
+              <p className="text-sm text-muted-foreground">正在加载 Claims…</p>
+            ) : claims.length > 0 ? (
               <div className="overflow-x-auto rounded border">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-muted/50 text-muted-foreground">
@@ -184,12 +198,14 @@ export default function RolesPage() {
                 </table>
               </div>
             ) : <p className="text-sm text-muted-foreground">暂无自定义 Claims。</p>}
-            <div className="grid gap-3 sm:grid-cols-[1.2fr_1fr_0.7fr_auto] sm:items-end">
-              <div className="grid gap-1.5"><Label htmlFor="claim-type">类型</Label><Input id="claim-type" value={claimDraft.claimType} onChange={(event) => setClaimDraft({ ...claimDraft, claimType: event.target.value })} /></div>
-              <div className="grid gap-1.5"><Label htmlFor="claim-value">值</Label><Input id="claim-value" value={claimDraft.claimValue} onChange={(event) => setClaimDraft({ ...claimDraft, claimValue: event.target.value })} /></div>
-              <div className="grid gap-1.5"><Label htmlFor="claim-scope">Scope</Label><Input id="claim-scope" value={claimDraft.scope} onChange={(event) => setClaimDraft({ ...claimDraft, scope: event.target.value })} /></div>
-              <Button disabled={claimsBusy} onClick={() => void addClaim()}>添加</Button>
-            </div>
+            {!claimsLoading && (
+              <div className="grid gap-3 sm:grid-cols-[1.2fr_1fr_0.7fr_auto] sm:items-end">
+                <div className="grid gap-1.5"><Label htmlFor="claim-type">类型</Label><Input id="claim-type" value={claimDraft.claimType} onChange={(event) => setClaimDraft({ ...claimDraft, claimType: event.target.value })} /></div>
+                <div className="grid gap-1.5"><Label htmlFor="claim-value">值</Label><Input id="claim-value" value={claimDraft.claimValue} onChange={(event) => setClaimDraft({ ...claimDraft, claimValue: event.target.value })} /></div>
+                <div className="grid gap-1.5"><Label htmlFor="claim-scope">Scope</Label><Input id="claim-scope" value={claimDraft.scope} onChange={(event) => setClaimDraft({ ...claimDraft, scope: event.target.value })} /></div>
+                <Button disabled={claimsBusy} onClick={() => void addClaim()}>添加</Button>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

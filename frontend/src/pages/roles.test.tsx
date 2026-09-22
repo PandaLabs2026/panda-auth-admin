@@ -33,6 +33,48 @@ describe("RolesPage", () => {
     expect(screen.getByText("api")).toBeInTheDocument()
   })
 
+  it("encodes the selected role ID in the Claims request", async () => {
+    const encodedRole = { id: "role/one?scope=admin", name: "special" }
+    const encodedPath = "/admin/api/roles/role%2Fone%3Fscope%3Dadmin/claims"
+    const fetchMock = vi.fn((path: string) => {
+      if (path.startsWith("/admin/api/roles?")) {
+        return Promise.resolve(json({ items: [encodedRole], total: 1, page: 1, pageSize: 20 }))
+      }
+      if (path === encodedPath) return Promise.resolve(json(claims))
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const user = userEvent.setup()
+
+    render(<RolesPage />)
+    await user.click(await screen.findByRole("button", { name: "special" }))
+
+    expect(await screen.findByText("panda:department")).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(encodedPath, expect.anything())
+  })
+
+  it("shows Claims loading and disables Claim writes while a role request is pending", async () => {
+    let resolveClaims: ((response: Response) => void) | undefined
+    const pendingClaims = new Promise<Response>((resolve) => {
+      resolveClaims = resolve
+    })
+    vi.stubGlobal("fetch", vi.fn((path: string) => {
+      if (path.startsWith("/admin/api/roles?")) return Promise.resolve(json(roles))
+      if (path === "/admin/api/roles/role-1/claims") return pendingClaims
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    }))
+    const user = userEvent.setup()
+
+    render(<RolesPage />)
+    await user.click(await screen.findByRole("button", { name: "admin" }))
+
+    expect(await screen.findByText("正在加载 Claims…")).toBeInTheDocument()
+    expect(screen.queryByText("暂无自定义 Claims。")).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "添加" })).not.toBeInTheDocument()
+
+    resolveClaims?.(json([]))
+  })
+
   it("blocks an empty claim and does not send a write request", async () => {
     const fetchMock = vi.fn((path: string, _options?: RequestInit) => {
       if (path.startsWith("/admin/api/roles?")) return Promise.resolve(json(roles))
