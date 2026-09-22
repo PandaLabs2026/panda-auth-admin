@@ -378,6 +378,12 @@ app.MapPost("/admin/api/users", async (HttpContext ctx, AdminApiProxy proxy) =>
 app.MapGet("/admin/api/users/{id}/claims", (string id, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(id), HttpMethod.Get));
 
+app.MapGet("/admin/api/roles", async (HttpContext context, AdminApiProxy proxy) =>
+{
+    var query = context.Request.QueryString.HasValue ? context.Request.QueryString.Value : string.Empty;
+    return await proxy.ForwardAsync(PandaAuthAdminApi.Roles + query, HttpMethod.Get);
+});
+
 app.MapPost("/admin/api/users/{id}/claims", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
 {
     try
