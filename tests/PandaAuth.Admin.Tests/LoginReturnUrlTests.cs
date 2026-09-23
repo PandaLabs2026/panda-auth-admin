@@ -1,6 +1,6 @@
 using Xunit;
 
-namespace PandaAuth.WebAdmin.Tests;
+namespace PandaAuth.Admin.Tests;
 
 /// <summary>
 /// <c>/admin/login?returnUrl=</c> 的开放重定向防护测试（矩阵随 LoginReturnUrl 自 panda-auth-me 移植）。

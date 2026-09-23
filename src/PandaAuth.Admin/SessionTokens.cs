@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 
-namespace PandaAuth.WebAdmin;
+namespace PandaAuth.Admin;
 
 /// <summary>
 /// 会话 Cookie 票据中保存的 IDP 令牌。

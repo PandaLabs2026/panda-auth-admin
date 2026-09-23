@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="src/PandaAuth.WebAdmin/PandaAuth.WebAdmin.csproj" />
-  <Project Path="tests/PandaAuth.WebAdmin.Tests/PandaAuth.WebAdmin.Tests.csproj" />
-</Solution>

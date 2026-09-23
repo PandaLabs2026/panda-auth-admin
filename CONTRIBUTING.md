@@ -9,7 +9,7 @@
 从本仓根目录开始；前置条件与已知限制见 [README](README.md)。代码或依赖变更按范围执行：
 
 ```bash
-dotnet build PandaAuth.WebAdmin.slnx
+dotnet build PandaAuth.Admin.slnx
 cd frontend
 npm ci
 npm run build

@@ -1,4 +1,4 @@
-namespace PandaAuth.WebAdmin;
+namespace PandaAuth.Admin;
 
 /// <summary>
 /// <c>/admin/login</c> 的 <c>returnUrl</c> 校验：只放行**本地、且落在 <c>/admin</c> 前缀下**的相对路径。
@@ -20,7 +20,7 @@ namespace PandaAuth.WebAdmin;
 ///   <item>反斜杠（<c>/\evil.com</c>，以及路径中途的 <c>\</c>）——WHATWG URL 解析把 <c>\</c> 视同 <c>/</c>，
 ///   故 <c>/\evil.com</c> 与 <c>//evil.com</c> 同义。一律拒绝含 <c>\</c> 的输入，
 ///   免得逐个推导「这段反斜杠会不会在归一化后拼出 <c>//</c>」。</item>
-///   <item>非 <c>/admin</c> 前缀的本地路径（<c>/evil</c>）——本函数只服务于 webadmin 服务，
+///   <item>非 <c>/admin</c> 前缀的本地路径（<c>/evil</c>）——本函数只服务于 admin 服务，
 ///   放行其它前缀没有正当用途。</item>
 ///   <item><c>..</c> 路径段（<c>/admin/..//evil.com</c>）——它本身还不是外站跳转，但归并 <c>..</c> 之后
 ///   路径会变成 <c>//evil.com</c>，即**归一化后才成形的协议相对地址**。一个合法回跳不需要 <c>..</c>，

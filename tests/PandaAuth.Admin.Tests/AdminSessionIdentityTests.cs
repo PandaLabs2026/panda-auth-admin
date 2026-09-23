@@ -3,7 +3,7 @@ using PandaAuth.Shared;
 using Xunit;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
-namespace PandaAuth.WebAdmin.Tests;
+namespace PandaAuth.Admin.Tests;
 
 /// <summary>
 /// 管理后台会话身份构建与 AdminRole 门禁判定测试——0.2 的安全核心。

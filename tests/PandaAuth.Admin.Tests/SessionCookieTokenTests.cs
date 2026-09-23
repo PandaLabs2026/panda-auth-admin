@@ -11,7 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Xunit;
 
-namespace PandaAuth.WebAdmin.Tests;
+namespace PandaAuth.Admin.Tests;
 
 /// <summary>
 /// 实证测试：登出侧「从会话 Cookie 取回令牌」的取法是否真的成立
@@ -34,7 +34,7 @@ public class SessionCookieTokenTests
 {
     private const string AccessToken = "access-token-from-cookie";
     private const string RefreshToken = "refresh-token-from-cookie";
-    private const string CookieName = "PandaAuth.WebAdmin";
+    private const string CookieName = "PandaAuth.Admin";
     private const string NoToken = "<none>";
 
     [Fact]

@@ -1,4 +1,4 @@
-namespace PandaAuth.WebAdmin;
+namespace PandaAuth.Admin;
 
 /// <summary>管理后台安全响应头（CSP 允许内联样式与 vite 产物）。</summary>
 public sealed class SecurityHeadersMiddleware(RequestDelegate next)

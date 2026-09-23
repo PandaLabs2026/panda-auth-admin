@@ -14,7 +14,7 @@ export default defineConfig({
     alias: { "@": path.resolve(dirname, "./src") },
   },
   build: {
-    outDir: "../src/PandaAuth.WebAdmin/wwwroot/admin",
+    outDir: "../src/PandaAuth.Admin/wwwroot/admin",
     emptyOutDir: true,
   },
   server: {

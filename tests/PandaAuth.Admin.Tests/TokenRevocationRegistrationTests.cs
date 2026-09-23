@@ -3,7 +3,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
-namespace PandaAuth.WebAdmin.Tests;
+namespace PandaAuth.Admin.Tests;
 
 /// <summary>
 /// 撤销客户端的 DI 装配测试：走容器解析，而不是手工 <c>new</c>

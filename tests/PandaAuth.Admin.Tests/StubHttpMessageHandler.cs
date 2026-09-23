@@ -1,7 +1,7 @@
 using System.Net;
 using Microsoft.AspNetCore.WebUtilities;
 
-namespace PandaAuth.WebAdmin.Tests;
+namespace PandaAuth.Admin.Tests;
 
 /// <summary>
 /// 记录真实发出的 HTTP 请求的桩处理器（随四件套自 panda-auth-me 移植）。

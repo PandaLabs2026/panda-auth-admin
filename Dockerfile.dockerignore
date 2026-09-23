@@ -1,4 +1,4 @@
-# PandaAuth.WebAdmin 构建上下文过滤（BuildKit per-Dockerfile 忽略文件）。
+# PandaAuth.Admin 构建上下文过滤（BuildKit per-Dockerfile 忽略文件）。
 #
 # 为什么需要它：本仓自 v0.2.0 起 Dockerfile 构建上下文是**工作区根**（csproj 引用同级
 # panda-auth-share），而 Docker 只读上下文根的 .dockerignore —— 本仓的 .dockerignore
@@ -32,12 +32,12 @@ releases/
 !**/deploy/.env.example
 **/deploy/backups/
 
-# SPA 构建产物：上下文（工作区根）里 me 与 webadmin 各有一份，两份都排；
+# SPA 构建产物：上下文（工作区根）里 me 与 admin 各有一份，两份都排；
 # 它们是 `npm run build` 的输出（git ls-files 命中 0），进上下文只会漂移构建缓存，
-# webadmin 自身那份不排除还会以合并语义混进镜像（详见 me 同名文件注记）。
+# admin 自身那份不排除还会以合并语义混进镜像（详见 me 同名文件注记）。
 # 别动 server / website 的 wwwroot（品牌资产，随源码提交）。
 panda-auth-me/src/PandaAuth.Me/wwwroot/
-panda-auth-webadmin/src/PandaAuth.WebAdmin/wwwroot/
+panda-auth-admin/src/PandaAuth.Admin/wwwroot/
 
 # 本地流程账本（未入库、随机器与每轮任务变化），不是源码、任何构建都不读它。
 **/.superpowers/

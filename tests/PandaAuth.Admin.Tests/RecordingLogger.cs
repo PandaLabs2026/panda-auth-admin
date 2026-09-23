@@ -1,6 +1,6 @@
 using Microsoft.Extensions.Logging;
 
-namespace PandaAuth.WebAdmin.Tests;
+namespace PandaAuth.Admin.Tests;
 
 /// <summary>
 /// 捕获日志条目（级别 / 文本 / 异常）的测试用 <see cref="ILogger{T}"/>（随四件套自 panda-auth-me 移植）。

@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <RootNamespace>PandaAuth.WebAdmin.Tests</RootNamespace>
-    <AssemblyName>PandaAuth.WebAdmin.Tests</AssemblyName>
+    <RootNamespace>PandaAuth.Admin.Tests</RootNamespace>
+    <AssemblyName>PandaAuth.Admin.Tests</AssemblyName>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
@@ -18,7 +18,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\PandaAuth.WebAdmin\PandaAuth.WebAdmin.csproj" />
+    <ProjectReference Include="..\..\src\PandaAuth.Admin\PandaAuth.Admin.csproj" />
   </ItemGroup>
 
 </Project>

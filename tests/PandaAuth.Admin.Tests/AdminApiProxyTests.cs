@@ -12,7 +12,7 @@ using OpenIddict.Client;
 using PandaAuth.Shared;
 using Xunit;
 
-namespace PandaAuth.WebAdmin.Tests;
+namespace PandaAuth.Admin.Tests;
 
 /// <summary>
 /// AdminApiProxy 转发测试：断言真实发出的请求（Bearer / XFF / 路径 / 请求体），

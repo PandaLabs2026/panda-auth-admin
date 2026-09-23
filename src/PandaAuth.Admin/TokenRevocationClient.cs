@@ -2,7 +2,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using PandaAuth.Shared;
 
-namespace PandaAuth.WebAdmin;
+namespace PandaAuth.Admin;
 
 /// <summary>
 /// 登出撤销所需的 IDP 侧配置：issuer 与 admin-web 客户端凭据。

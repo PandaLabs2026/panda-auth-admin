@@ -1,4 +1,4 @@
-namespace PandaAuth.WebAdmin;
+namespace PandaAuth.Admin;
 
 /// <summary>登出撤销（<see cref="TokenRevocationClient"/>）的 DI 装配。</summary>
 public static class TokenRevocationServiceCollectionExtensions

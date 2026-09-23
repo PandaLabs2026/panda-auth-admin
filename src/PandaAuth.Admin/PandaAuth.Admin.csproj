@@ -1,8 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <RootNamespace>PandaAuth.WebAdmin</RootNamespace>
-    <AssemblyName>PandaAuth.WebAdmin</AssemblyName>
+    <RootNamespace>PandaAuth.Admin</RootNamespace>
+    <AssemblyName>PandaAuth.Admin</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,7 +17,7 @@
   </ItemGroup>
   <ItemGroup>
     <!-- AdminSessionIdentity（角色门禁）以 internal 可测，先例：server 的 CreatePrincipalAsync -->
-    <InternalsVisibleTo Include="PandaAuth.WebAdmin.Tests" />
+    <InternalsVisibleTo Include="PandaAuth.Admin.Tests" />
   </ItemGroup>
 
 </Project>

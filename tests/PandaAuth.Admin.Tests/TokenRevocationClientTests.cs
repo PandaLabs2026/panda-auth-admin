@@ -4,7 +4,7 @@ using Microsoft.Extensions.Logging;
 using PandaAuth.Shared;
 using Xunit;
 
-namespace PandaAuth.WebAdmin.Tests;
+namespace PandaAuth.Admin.Tests;
 
 /// <summary>
 /// 登出撤销客户端测试：用桩 <see cref="HttpMessageHandler"/> 断言真实发出的请求

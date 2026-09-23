@@ -1,10 +1,10 @@
-# 本仓即构建上下文（release.sh 的 svc_context → panda-auth-webadmin），
+# 本仓即构建上下文（release.sh 的 svc_context → panda-auth-admin），
 # 故这些规则**相对仓根**，可直接生效。
 #
 # ⚠️ 一律带 `**/` 前缀：不带前缀的模式只匹配**上下文根**（Docker 的 dockerignore
 #    不会像 gitignore 那样自动递归到任意深度），而实际产物在
-#    src/PandaAuth.WebAdmin/bin|obj —— 写成 `bin/` 等于没排除
-#    （2026-09-16 实测：往 src/PandaAuth.WebAdmin/bin/ 种入 20MB 后上下文涨到 20.45MB）。
+#    src/PandaAuth.Admin/bin|obj —— 写成 `bin/` 等于没排除
+#    （2026-09-16 实测：往 src/PandaAuth.Admin/bin/ 种入 20MB 后上下文涨到 20.45MB）。
 #
 # 规则清单与 me / server 的 Dockerfile.dockerignore 保持同一套（按各自的上下文形态改写），
 # 判据：种入全套脏产物后，上下文里不含清单中任何一项。
@@ -41,8 +41,8 @@
 # Dockerfile.dockerignore 一直刻意不排 *.md，删掉后四处策略一致。
 
 # 前端构建产物（由 vite 输出，不入库）。
-# 不变式：git ls-files src/PandaAuth.WebAdmin/wwwroot 命中数为 0，
+# 不变式：git ls-files src/PandaAuth.Admin/wwwroot 命中数为 0，
 # 该目录 100% 是构建输出。若将来这里混入**随源码提交**的资产
 # （对照 server / website 的 wwwroot/brand/**），必须收窄为只排除
-# src/PandaAuth.WebAdmin/wwwroot/admin/，否则会把该资产挡在镜像外。
-src/PandaAuth.WebAdmin/wwwroot/
+# src/PandaAuth.Admin/wwwroot/admin/，否则会把该资产挡在镜像外。
+src/PandaAuth.Admin/wwwroot/

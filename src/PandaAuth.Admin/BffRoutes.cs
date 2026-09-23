@@ -1,4 +1,4 @@
-namespace PandaAuth.WebAdmin;
+namespace PandaAuth.Admin;
 
 /// <summary>
 /// BFF 保留的路径前缀：这些命名空间属于**服务端接口**，不属于前端路由。

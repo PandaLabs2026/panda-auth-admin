@@ -11,7 +11,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using OpenIddict.Client;
 using OpenIddict.Client.AspNetCore;
 using PandaAuth.Shared;
-using PandaAuth.WebAdmin;
+using PandaAuth.Admin;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -26,7 +26,7 @@ builder.Services
     })
     .AddCookie(options =>
     {
-        options.Cookie.Name = "PandaAuth.WebAdmin";
+        options.Cookie.Name = "PandaAuth.Admin";
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
@@ -40,7 +40,7 @@ builder.Services
 
 // 会话 Cookie 与防伪令牌由 DataProtection 保护。Auth:DataProtectionKeyPath 非空时持久化密钥环
 // （生产由 compose 注入卷路径），容器重建后既有登录态不失效；默认空串 = 临时密钥，仅限开发环境。
-// 应用名固定为 PandaAuth.WebAdmin：不同服务不共用密钥环，各服务的卷本就独立。
+// 应用名固定为 PandaAuth.Admin：不同服务不共用密钥环，各服务的卷本就独立。
 var dataProtectionKeyPath = builder.Configuration["Auth:DataProtectionKeyPath"];
 if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
 {
@@ -56,7 +56,7 @@ if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
     builder.Services
         .AddDataProtection()
         .PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeyPath))
-        .SetApplicationName("PandaAuth.WebAdmin");
+        .SetApplicationName("PandaAuth.Admin");
 }
 
 // IDP 侧取值集中取出：OpenIddict 客户端注册与登出撤销客户端共用同一组配置，避免两份事实源。
@@ -73,7 +73,7 @@ if (string.IsNullOrWhiteSpace(clientSecret))
 // 不能留给 AddHttpClient 的 configure 委托（它只在解析该类型时才执行）。
 builder.Services.AddTokenRevocation(builder.Configuration, new TokenRevocationOptions(issuer, clientId, clientSecret));
 
-// Admin 数据 API 代理（webadmin 0.3）：直连 IDP 内部地址（同 host network，不经公网/Caddy）。
+// Admin 数据 API 代理（admin 0.3）：直连 IDP 内部地址（同 host network，不经公网/Caddy）。
 // 基址可配（Auth:IdpInternalBaseAddress），默认回环 9004——公网形态下该前缀在 Caddy 路由表外，
 // IDP 侧另有 Bearer + admin 角色门禁，双保险。
 var idpInternalBase = builder.Configuration["Auth:IdpInternalBaseAddress"] ?? "http://127.0.0.1:9004/";
@@ -91,7 +91,7 @@ builder.Services.AddOpenIddict()
         options.AllowAuthorizationCodeFlow();
         options.AllowRefreshTokenFlow();
 
-        // webadmin 是 BFF：令牌保存在 DataProtection 保护的会话 Cookie 中（回调处显式 StoreTokens），
+        // admin 是 BFF：令牌保存在 DataProtection 保护的会话 Cookie 中（回调处显式 StoreTokens），
         // 不使用 OpenIddict 的服务端令牌存储，故无需注册 OpenIddict core 服务（与 me 同款理由）。
         options.DisableTokenStorage();
 
@@ -201,7 +201,7 @@ app.MapGet("/admin/login", (string? returnUrl) =>
 // 匿名是必需的：回调发生在会话建立之前。
 app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
 {
-    var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("PandaAuth.WebAdmin.Callback");
+    var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("PandaAuth.Admin.Callback");
 
     var result = await context.AuthenticateAsync(OpenIddictClientAspNetCoreDefaults.AuthenticationScheme);
     if (result is not { Succeeded: true } || result.Principal is null)
@@ -313,7 +313,7 @@ app.MapPost("/admin/api/logout", async (HttpContext context, TokenRevocationClie
         [OpenIddictClientAspNetCoreDefaults.AuthenticationScheme]);
 });
 
-// ---- Admin 数据 API 代理端点（webadmin 0.3）----
+// ---- Admin 数据 API 代理端点（admin 0.3）----
 // 全部落在 FallbackPolicy 下（需已认证）；变更类（POST/PUT）先验防伪再转发 JSON 体；
 // GET 透传查询串。上游路径取自 share 契约常量（PandaAuthAdminApi），两端不写 URL 字面量。
 async Task<string?> ReadJsonBodyAsync(HttpContext ctx)

@@ -12,7 +12,7 @@ using Microsoft.Extensions.Options;
 using Xunit;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
-namespace PandaAuth.WebAdmin.Tests;
+namespace PandaAuth.Admin.Tests;
 
 /// <summary>
 /// BFF 路由守卫集成测试（真实 Program.cs，经 WebApplicationFactory）。

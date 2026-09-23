@@ -4,7 +4,7 @@ using OpenIddict.Abstractions;
 using PandaAuth.Shared;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
-namespace PandaAuth.WebAdmin;
+namespace PandaAuth.Admin;
 
 /// <summary>
 /// OIDC 回调结果 → 管理后台会话 Cookie 身份的构建（含 AdminRole 门禁判定）。

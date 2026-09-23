@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using OpenIddict.Client;
 
-namespace PandaAuth.WebAdmin;
+namespace PandaAuth.Admin;
 
 /// <summary>
 /// BFF → IDP Admin 数据 API 的代理：转发请求（Bearer AT + 原始客户端 IP 透传），

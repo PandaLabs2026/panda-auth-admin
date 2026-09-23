@@ -14,7 +14,7 @@ frontend/node_modules/
 frontend/dist/
 
 # 前端构建产物（由 vite 输出，不入库）
-src/PandaAuth.WebAdmin/wwwroot/
+src/PandaAuth.Admin/wwwroot/
 
 # ZCode 会话数据
 .zcode/

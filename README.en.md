@@ -1,4 +1,4 @@
-# panda-auth-webadmin
+# panda-auth-admin
 
 **PandaAuth by PandaLabs** · [简体中文](README.md)
 
@@ -10,7 +10,7 @@ PandaAuth administration uses a .NET 10 BFF and React 19 frontend. Production pa
 
 ## Current implementation and limitations
 
-The [backend](src/PandaAuth.WebAdmin/Program.cs) has Cookie configuration, antiforgery tokens and static hosting. The [login page](frontend/src/pages/login.tsx) is a placeholder. `POST /admin/api/auth/login` always returns 501; real administrator login and dynamic client management are not available.
+The [backend](src/PandaAuth.Admin/Program.cs) has Cookie configuration, antiforgery tokens and static hosting. The [login page](frontend/src/pages/login.tsx) is a placeholder. `POST /admin/api/auth/login` always returns 501; real administrator login and dynamic client management are not available.
 
 Health path `/admin/healthz` and antiforgery endpoint `/admin/api/antiforgery` exist. User, client and audit management are Phase 1 targets. Cookie/antiforgery configuration is not proof of completed security acceptance.
 
@@ -21,12 +21,12 @@ Use the .NET SDK selected by [global.json](global.json) (currently 10.0.112 with
 Use Node 24 and npm for the frontend, matching the Docker build environment. There is no cross-repository ProjectReference. Frontend output is written to the BFF's `wwwroot/admin`.
 
 ```bash
-dotnet build PandaAuth.WebAdmin.slnx
+dotnet build PandaAuth.Admin.slnx
 cd frontend
 npm ci
 npm run build
 cd ..
-dotnet run --project src/PandaAuth.WebAdmin
+dotnet run --project src/PandaAuth.Admin
 ```
 
 After building, http://localhost:9006/admin/login only shows the login scaffold. For frontend hot reload, use another terminal starting at the repository root:
@@ -40,7 +40,7 @@ The frontend uses port 5171 and proxies APIs to 9006. Full backend login is not 
 
 ## Roadmap and governance
 
-Product roadmap, release gates and community/commercial boundaries remain maintainer-governed until a formal public release. This README documents only the independently reproducible WebAdmin build boundary.
+Product roadmap, release gates and community/commercial boundaries remain maintainer-governed until a formal public release. This README documents only the independently reproducible admin build boundary.
 
 - [Security](SECURITY.md): selected private reporting channel, enablement unverified; no public vulnerability details.
 - [Contributing](CONTRIBUTING.md): repository-specific checks and the shared contribution policy.
