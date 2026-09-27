@@ -2,7 +2,7 @@
 
 ## 职责与边界
 
-本仓是 PandaAuth 管理后台，包含 .NET BFF 与 React 前端；生产路径 `/admin`，BFF 监听 `127.0.0.1:9006`。发布与 Compose 事实见 `../panda-auth/AGENTS.md`、`../panda-auth/WORKSPACE.md` 和 `../panda-auth/deploy/README.md`。
+本仓是 PandaAuth 管理后台，包含 .NET BFF 与 React 前端；生产路径 `/admin`。容器镜像默认监听 `127.0.0.1:9006`；生产监听以 `../panda-auth/deploy/README.md` 为准，当前登记为 `127.0.0.1:6001`。不得把容器默认端口当作生产端口。发布与 Compose 事实见 `../panda-auth/AGENTS.md`、`../panda-auth/WORKSPACE.md` 和 `../panda-auth/deploy/README.md`。
 
 ## 跨仓来源与安全
 
