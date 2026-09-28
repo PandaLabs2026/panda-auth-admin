@@ -40,13 +40,13 @@ public sealed class TokenRevocationClient(
     /// 撤销它才真正切断链路；后者只有 10 分钟，但既然就握在手里，一并撤掉可把泄漏窗口压到零。
     /// 两次调用互不短路——前一次失败不影响后一次。
     /// </remarks>
-    public async Task RevokeAsync(string? accessToken, string? refreshToken, CancellationToken cancellationToken = default)
+    public async Task RevokeAsync(string? accessToken, string? refreshToken, CancellationToken cancellationToken = default, Uri? issuer = null)
     {
-        await RevokeOneAsync(refreshToken, "refresh_token", cancellationToken);
-        await RevokeOneAsync(accessToken, "access_token", cancellationToken);
+        await RevokeOneAsync(refreshToken, "refresh_token", cancellationToken, issuer);
+        await RevokeOneAsync(accessToken, "access_token", cancellationToken, issuer);
     }
 
-    private async Task RevokeOneAsync(string? token, string tokenTypeHint, CancellationToken cancellationToken)
+    private async Task RevokeOneAsync(string? token, string tokenTypeHint, CancellationToken cancellationToken, Uri? issuer)
     {
         if (string.IsNullOrEmpty(token))
         {
@@ -57,7 +57,7 @@ public sealed class TokenRevocationClient(
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Post, RevocationUri)
+            using var request = new HttpRequestMessage(HttpMethod.Post, GetRevocationUri(issuer))
             {
                 Content = new FormUrlEncodedContent(new Dictionary<string, string>
                 {
@@ -95,6 +95,6 @@ public sealed class TokenRevocationClient(
     /// 用字符串拼接而非 <see cref="Uri"/> 相对解析：issuer 若带路径前缀（例如 <c>https://host/idp/</c>），
     /// 以 <c>/</c> 开头的契约常量会把前缀整段吃掉，拼出错误的地址。
     /// </remarks>
-    private Uri RevocationUri =>
-        new($"{options.Issuer.OriginalString.TrimEnd('/')}{PandaAuthEndpoints.Revocation}", UriKind.Absolute);
+    private Uri GetRevocationUri(Uri? issuer) =>
+        new($"{(issuer ?? options.Issuer).OriginalString.TrimEnd('/')}{PandaAuthEndpoints.Revocation}", UriKind.Absolute);
 }

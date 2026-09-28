@@ -49,6 +49,17 @@ public class TenantHostContextTests
         Assert.Null(reason);
     }
 
+    [Fact]
+    public void TenantHost_UsesTheCurrentHostAsOidcIssuer()
+    {
+        var context = Request("t0042.auth.pandalabs.cn");
+        context.Request.Scheme = "https";
+
+        var issuer = TenantOidcRouting.ResolveIssuer(context.Request, new Uri("https://auth.pandalabs.cn/"));
+
+        Assert.Equal("https://t0042.auth.pandalabs.cn/", issuer.ToString());
+    }
+
     private static DefaultHttpContext Request(string host)
     {
         var context = new DefaultHttpContext();

@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -121,9 +122,18 @@ builder.Services.AddOpenIddict()
                 Scopes.OfflineAccess,
             },
             // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）；生产值由 compose 注入。
-            RedirectUri = new Uri(builder.Configuration["Auth:RedirectUri"] ?? "http://localhost:9006/admin/callback/login/pandaauth"),
-            PostLogoutRedirectUri = new Uri(builder.Configuration["Auth:PostLogoutRedirectUri"] ?? "http://localhost:9006/admin/"),
+            RedirectUri = new Uri("admin/callback/login/pandaauth", UriKind.Relative),
+            PostLogoutRedirectUri = new Uri("admin/", UriKind.Relative),
         });
+
+        options.AddEventHandler<OpenIddictClientEvents.ProcessChallengeContext>(descriptor =>
+            descriptor.UseInlineHandler(context =>
+            {
+                context.Issuer = TenantOidcRouting.ResolveIssuer(
+                    context.Transaction.GetHttpRequest()
+                        ?? throw new InvalidOperationException("OpenIddict challenge is missing the current HTTP request."), issuer);
+                return default;
+            }));
     });
 
 // 登录挑战端点限流（按 IP 固定窗口）：只卡 /admin/login 本身，防的是挑战刷量与授权端点滥用；
@@ -319,7 +329,11 @@ app.MapPost("/admin/api/logout", async (HttpContext context, TokenRevocationClie
     var (accessToken, refreshToken) = SessionTokens.Read(
         await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme));
 
-    await revocationClient.RevokeAsync(accessToken, refreshToken, context.RequestAborted);
+    await revocationClient.RevokeAsync(
+        accessToken,
+        refreshToken,
+        context.RequestAborted,
+        TenantOidcRouting.ResolveIssuer(context.Request, issuer));
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
     // RP 发起的前端登出：重定向到 IDP 的 end-session 端点（单点登出），再回 PostLogoutRedirectUri。
