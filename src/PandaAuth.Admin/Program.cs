@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -30,6 +31,7 @@ builder.Services
         options.Cookie.HttpOnly = true;
         options.Cookie.SameSite = SameSiteMode.Lax;
         options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.Cookie.Path = "/admin";
         options.LoginPath = "/admin/login";
         // 时效：管理面比 me（8 小时）更紧——2 小时闲置过期 + 活动滑动续期。
         // Cookie 票据内含 refresh_token（IDP 侧 14 天），长期凭据不应以管理员身份长期驻留浏览器；
@@ -120,9 +122,18 @@ builder.Services.AddOpenIddict()
                 Scopes.OfflineAccess,
             },
             // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）；生产值由 compose 注入。
-            RedirectUri = new Uri(builder.Configuration["Auth:RedirectUri"] ?? "http://localhost:9006/admin/callback/login/pandaauth"),
-            PostLogoutRedirectUri = new Uri(builder.Configuration["Auth:PostLogoutRedirectUri"] ?? "http://localhost:9006/admin/"),
+            RedirectUri = new Uri("admin/callback/login/pandaauth", UriKind.Relative),
+            PostLogoutRedirectUri = new Uri("admin/", UriKind.Relative),
         });
+
+        options.AddEventHandler<OpenIddictClientEvents.ProcessChallengeContext>(descriptor =>
+            descriptor.UseInlineHandler(context =>
+            {
+                context.Issuer = TenantOidcRouting.ResolveIssuer(
+                    context.Transaction.GetHttpRequest()
+                        ?? throw new InvalidOperationException("OpenIddict challenge is missing the current HTTP request."), issuer);
+                return default;
+            }));
     });
 
 // 登录挑战端点限流（按 IP 固定窗口）：只卡 /admin/login 本身，防的是挑战刷量与授权端点滥用；
@@ -180,6 +191,7 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 // 因此这两个中间件的位置在这里显式写死，而不是交给框架的自动插入顺序。
 app.UseStaticFiles();
 app.UseAuthentication();
+app.UseMiddleware<TenantHostContextMiddleware>();
 app.UseAuthorization();
 // 限流中间件：基于端点元数据（RequireRateLimiting）生效，须在认证之后（限流分区取真实 IP 依赖
 // ForwardedHeaders 已处理）、端点执行之前。
@@ -211,6 +223,19 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
     }
 
     var (identity, isAdmin) = AdminSessionIdentity.Build(result.Principal);
+
+    if (!TenantHostContext.TryValidate(context, result.Principal, out var tenantReason))
+    {
+        logger.LogWarning(
+            "管理后台登录被拒：OIDC 租户声明与请求主机不一致或主机未知（reason={Reason}, host={Host}）。",
+            tenantReason,
+            context.Request.Host.Host);
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        return Results.Content(
+            "<!doctype html><html lang=\"zh\"><meta charset=\"utf-8\"><title>403</title>" +
+            "<body style=\"font-family:system-ui;padding:3rem\">租户入口与登录上下文不匹配。</body></html>",
+            "text/html; charset=utf-8");
+    }
 
     // AdminRole 门禁：判定在服务端回调处强制，不依赖前端隐藏。失败关闭——roles 缺失（例如
     // userinfo 声明未到达）等同无角色，同样 403。审计记 warning（含 sub 与 IP，供追查），
@@ -304,7 +329,11 @@ app.MapPost("/admin/api/logout", async (HttpContext context, TokenRevocationClie
     var (accessToken, refreshToken) = SessionTokens.Read(
         await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme));
 
-    await revocationClient.RevokeAsync(accessToken, refreshToken, context.RequestAborted);
+    await revocationClient.RevokeAsync(
+        accessToken,
+        refreshToken,
+        context.RequestAborted,
+        TenantOidcRouting.ResolveIssuer(context.Request, issuer));
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
     // RP 发起的前端登出：重定向到 IDP 的 end-session 端点（单点登出），再回 PostLogoutRedirectUri。

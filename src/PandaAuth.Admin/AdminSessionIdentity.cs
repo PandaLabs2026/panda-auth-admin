@@ -43,6 +43,8 @@ internal static class AdminSessionIdentity
         AddIfPresent(identity, principal, Claims.Name);
         AddIfPresent(identity, principal, Claims.Email);
         AddIfPresent(identity, principal, PandaAuthClaims.Nickname);
+        AddIfPresent(identity, principal, PandaAuthClaims.TenantId);
+        AddIfPresent(identity, principal, PandaAuthClaims.TenantHost);
 
         // 角色全量复制（不止 admin 一个）：会话端点回显 roles，管理侧功能将来按角色细分。
         // 门禁判定只认 PandaAuthRoles.Admin（share 契约常量，与 server 的 AdminRole 值一致）。
