@@ -16,7 +16,7 @@ Health path `/admin/healthz` and antiforgery endpoint `/admin/api/antiforgery` e
 
 ## Prerequisites, build and run
 
-Use the .NET SDK selected by [global.json](global.json) (currently 10.0.112 with latestFeature roll-forward). This repository has no cross-repository source dependency and can be built without the private coordination repository. Commands below run from this repository root. They were statically checked, not executed, in this documentation change.
+Use the .NET SDK selected by [global.json](global.json) (currently 10.0.112 with latestFeature roll-forward). This repository has no cross-repository source dependency and can be built without the private coordination repository. Commands below run from this repository root.
 
 Use Node 24 and npm for the frontend, matching the Docker build environment. There is no cross-repository ProjectReference. Frontend output is written to the BFF's `wwwroot/admin`.
 
