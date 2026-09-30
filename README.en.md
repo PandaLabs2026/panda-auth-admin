@@ -2,7 +2,7 @@
 
 **PandaAuth by PandaLabs** · [简体中文](README.md)
 
-> In development; no formally supported release yet. Access is by invitation or request. Implementation does not imply a verified release.
+> The PandaAuth suite is currently in **Community Preview 0.2.0-preview.1** — deployed in production and open to early community users. The stable Community Release 1.0.0 has not shipped yet. Access is by invitation or request.
 
 ## Responsibility and boundaries
 
@@ -10,9 +10,9 @@ PandaAuth administration uses a .NET 10 BFF and React 19 frontend. Production pa
 
 ## Current implementation and limitations
 
-The [backend](src/PandaAuth.Admin/Program.cs) has Cookie configuration, antiforgery tokens and static hosting. The [login page](frontend/src/pages/login.tsx) is a placeholder. `POST /admin/api/auth/login` always returns 501; real administrator login and dynamic client management are not available.
+The [backend](src/PandaAuth.Admin/Program.cs) runs as a first-party OIDC client: `GET /admin/login` is the authentication challenge endpoint (authorization code + PKCE), with cookie sessions and antiforgery tokens. The [login page](frontend/src/pages/login.tsx) navigates to the challenge endpoint; no credentials are entered on this site.
 
-Health path `/admin/healthz` and antiforgery endpoint `/admin/api/antiforgery` exist. User, client and audit management are Phase 1 targets. Cookie/antiforgery configuration is not proof of completed security acceptance.
+Health path `/admin/healthz` and antiforgery endpoint `/admin/api/antiforgery` exist. User, client, role and audit management pages are implemented. Cookie/antiforgery configuration is not proof of completed security acceptance.
 
 ## Prerequisites, build and run
 
