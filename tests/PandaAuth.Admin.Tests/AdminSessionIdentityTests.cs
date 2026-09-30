@@ -23,7 +23,7 @@ public class AdminSessionIdentityTests
         var principal = OidcPrincipal(
             new Claim(Claims.Subject, "user-1"),
             new Claim(Claims.Name, "admin"),
-            new Claim(Claims.Email, "admin@pandalabs.cc"),
+            new Claim(Claims.Email, "admin@example.com"),
             new Claim(PandaAuthClaims.Nickname, "PandaAdmin"),
             new Claim(Claims.Role, PandaAuthRoles.Admin));
 
@@ -35,7 +35,7 @@ public class AdminSessionIdentityTests
         Assert.Equal(Claims.Role, identity.RoleClaimType);
         Assert.Equal("user-1", identity.FindFirst(Claims.Subject)?.Value);
         Assert.Equal("admin", identity.FindFirst(Claims.Name)?.Value);
-        Assert.Equal("admin@pandalabs.cc", identity.FindFirst(Claims.Email)?.Value);
+        Assert.Equal("admin@example.com", identity.FindFirst(Claims.Email)?.Value);
         Assert.Equal("PandaAdmin", identity.FindFirst(PandaAuthClaims.Nickname)?.Value);
         Assert.Equal(PandaAuthRoles.Admin, identity.FindFirst(Claims.Role)?.Value);
     }

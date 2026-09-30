@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 /**
  * 管理后台登录页。
  *
- * 登录走 OIDC 客户端流（元仓 ADR 2026-09-18）：本页不做任何凭据输入与提交，
+ * 登录走 OIDC 客户端流：本页不做任何凭据输入与提交，
  * 点击按钮即全页导航到 BFF 的 `GET /admin/login`——那是认证挑战端点，302 到 IDP
  * 授权端点（授权码 + PKCE），凭据校验发生在 IDP 的登录页。回到本站的路径是
  * `/admin/callback/login/pandaauth`：具备 admin 角色则建立会话并落到 `/admin/`，

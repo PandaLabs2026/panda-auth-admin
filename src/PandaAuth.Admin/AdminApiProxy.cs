@@ -137,8 +137,8 @@ public sealed class AdminApiProxy(
 
             // 沿用既有会话身份、只更新令牌——刻意**不**用刷新 principal 重建身份：
             // 刷新流不经过 userinfo 并入，principal 不带 roles claim（IDP 把角色只写入 AT），
-            // 若据此重建，角色门禁必然误杀并把在线管理员踢回登录——正是 2026-09-19 生产
-            // 「进入子页面后跳回概览」的根因。角色回收由令牌侧兜底：冻结/重置已联动
+            // 若据此重建，角色门禁必然误杀并把在线管理员踢回登录——「进入子页面后
+            // 跳回概览」一类问题的根因即在此。角色回收由令牌侧兜底：冻结/重置已联动
             // RevokeUserTokens，令牌失效即会话失效。
             var identity = new ClaimsIdentity(context.User.Identity!);
             var properties = new AuthenticationProperties();
