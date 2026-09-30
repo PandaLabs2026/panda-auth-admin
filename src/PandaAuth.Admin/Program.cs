@@ -9,13 +9,22 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Options;
 using OpenIddict.Client;
 using OpenIddict.Client.AspNetCore;
 using PandaAuth.Shared;
 using PandaAuth.Admin;
+using PandaAuth.Admin.Infrastructure.Security;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    TenantForwardedHeaders.Configure(options, builder.Configuration);
+});
 
 builder.Services.AddAntiforgery(options => options.HeaderName = "X-XSRF-Token");
 builder.Services
@@ -170,16 +179,8 @@ builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
-// Caddy 以 HTTP 反代到 127.0.0.1:9006 并终结 TLS，需还原真实 Scheme 与客户端 IP。
-// 仅信任回环代理（Caddy 与容器同 host network，真实代理永远是回环地址）：伪造发生在 XFF 头链而非连接层，
-// 端口绑定 127.0.0.1 不能消除伪造风险，全量网段信任属失败开放配置。
-// ForwardLimit=1：只消费 Caddy 追加的最右一跳真实客户端 IP，攻击者伪造的最左值无法污染限流与审计。
-app.UseForwardedHeaders(new ForwardedHeadersOptions
-{
-    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
-    ForwardLimit = 1,
-    KnownProxies = { IPAddress.Loopback, IPAddress.IPv6Loopback },
-});
+// Legacy host-network runtime trusts loopback; tenant bridge runtime trusts only its exact Docker gateway.
+app.UseForwardedHeaders(app.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>().Value);
 
 app.UseMiddleware<SecurityHeadersMiddleware>();
 
