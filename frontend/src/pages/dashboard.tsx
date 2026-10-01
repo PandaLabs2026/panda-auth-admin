@@ -64,13 +64,13 @@ export default function DashboardPage() {
   }, [])
 
   // 会话校验期间不渲染完整内容：未登录者会被立刻全页跳转到 /admin/login（BFF 挑战）。
+  // 加载态必须与正式内容同锚点（顶部）：会话校验每次刷新都会跑，
+  // 若垂直居中，内容出现时整块上跳约半屏，被当成布局故障上报（2026-10-01）。
   if (loading && !session && !error) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <img src="/admin/apple-touch-icon.png" alt="" className="h-12 w-12 rounded-xl animate-pulse" />
-          <span className="text-sm text-muted-foreground">正在验证登录状态…</span>
-        </div>
+      <div className="flex items-center gap-3">
+        <img src="/admin/apple-touch-icon.png" alt="" className="h-12 w-12 rounded-xl animate-pulse" />
+        <span className="text-sm text-muted-foreground">正在验证登录状态…</span>
       </div>
     )
   }
