@@ -351,11 +351,17 @@ app.MapPost("/admin/api/logout", async (HttpContext context, TokenRevocationClie
         TenantOidcRouting.ResolveIssuer(context.Request, issuer));
     await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
-    // RP 发起的前端登出：重定向到 IDP 的 end-session 端点（单点登出），再回 PostLogoutRedirectUri。
-    return Results.SignOut(
-        new AuthenticationProperties { RedirectUri = "/admin/" },
-        [OpenIddictClientAspNetCoreDefaults.AuthenticationScheme]);
+    // RP 端到端登出：显式 302 到 IDP 的 end-session 端点（client-id-no-hint 公共登出路径，
+    // post_logout_redirect_uri 已在 admin-web 注册），确保 IDP SSO 会话一并终止后经
+    // /admin/callback/logout/pandaauth 回到登录页。若仅清本地 Cookie，存活的 IDP 会话会在
+    // 下一次 challenge 时把用户静默签回——表现为「退出无效」。
+    var endSession = new Uri(issuer, "connect/logout?client_id=" + Uri.EscapeDataString(clientId) +
+        "&post_logout_redirect_uri=" + Uri.EscapeDataString(new Uri(issuer, "admin/callback/logout/pandaauth").AbsoluteUri));
+    return Results.Redirect(endSession.AbsoluteUri);
 });
+
+// 登出后的落地端点：IDP end-session 完成后回到管理台登录页（匿名豁免——登录页本就匿名可达）。
+app.MapGet("/admin/callback/logout/pandaauth", () => Results.Redirect("/admin/login")).AllowAnonymous();
 
 // ---- Admin 数据 API 代理端点（admin 0.3）----
 // 全部落在 FallbackPolicy 下（需已认证）；变更类（POST/PUT）先验防伪再转发 JSON 体；
