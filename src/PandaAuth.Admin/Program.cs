@@ -648,7 +648,7 @@ foreach (var prefix in BffRoutes.ProtectedPrefixes)
 // 路由优先级：/admin/api/* 由上面那条更具体的回退接管（字面量段 api 胜过 catch-all），
 // 与本行的注册先后无关。
 // SPA 入口 no-store：部署轮换后浏览器不得沿用旧前端（带哈希的静态资源仍可长缓存）。
-app.MapFallbackToFile("/admin/{*path:nonfile}", "admin/index.html", new Microsoft.AspNetCore.StaticFiles.StaticFileOptions
+app.MapFallbackToFile("/admin/{*path:nonfile}", "admin/index.html", new Microsoft.AspNetCore.Builder.StaticFileOptions
 {
     OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-store"
 }).AllowAnonymous();
