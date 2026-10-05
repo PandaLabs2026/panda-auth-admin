@@ -176,21 +176,33 @@ public sealed class AdminApiProxy(
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
 
         // 403 语义二分：上游 MFA 门禁（server 侧 Forbid）与真正的权限拒绝在状态码上不可分，
-        // 前端把任意 403 当 step-up 会把权限拒绝误导向 /account/mfa。以响应体里的 MFA 标记
-        // 字段（ProblemDetails 的 mfaRequired 扩展，camelCase/snake_case 均认）判定，命中才
-        // 附加 X-Panda-Mfa-Required: true 供前端精确跳转；裸 403 维持普通透传，走错误展示。
-        var mfaRequired = response.StatusCode == HttpStatusCode.Forbidden && MarksMfaRequired(body);
+        // 前端把任意 403 当 step-up 会把权限拒绝误导向 /account/mfa。以响应体判定，命中才附加
+        // X-Panda-Mfa-Required: true 供前端精确跳转；带明确 JSON 错误描述的 403 走普通错误展示。
+        // 空体 403 属过渡期兼容：server 仓现有 15 处 MFA/WebAuthn 门禁全部是裸 Forbid()（空体、
+        // 无任何标记），若不按 step-up 处理，管理员做门禁操作只能看到裸 HTTP 403、无法从 UI
+        // 进入 step-up——合并即回归。server 侧补上 mfaRequired 标记（ProblemDetails 扩展）后
+        // 可删掉该过渡分支（配套测试会提示两处需同步）。
+        var mfaRequired = response.StatusCode == HttpStatusCode.Forbidden && IsMfaGate(body);
         return new UpstreamResult((int)response.StatusCode, contentType, body, mfaRequired);
     }
 
-    /// <summary>上游响应体是否带 MFA 门禁标记（顶层或 ProblemDetails extensions 下的布尔真值）。</summary>
+    /// <summary>上游 403 是否命中 MFA 门禁：响应体带布尔真标记，或为空体（裸 Forbid 过渡期）。</summary>
     /// <remarks>
-    /// 刻意容忍两种命名（camelCase 是 MVC ProblemDetails 序列化惯例，snake_case 是协议层惯例）：
-    /// server 侧尚未统一契约，此处只认**布尔真**——字符串/数字不算，避免「字段存在即命中」的误判。
-    /// 解析失败（空体/HTML——server 侧 Forbid() 即空体 403）一律按无标记处理。
+    /// <para>标记契约：ProblemDetails 顶层或 extensions 下的 mfaRequired / mfa_required，
+    /// 只认**布尔真**——字符串/数字不算，避免「字段存在即命中」的误判；camelCase 是 MVC
+    /// 序列化惯例，snake_case 是协议层惯例，两者都认。</para>
+    /// <para>空体（裸 Forbid）按命中处理：server 现状即此形态，MFA 门禁与权限拒绝在空体上
+    /// 本就不可分，维持合并前的「403 → step-up」行为，代价是罕见的真·权限拒绝（角色被回收）
+    /// 也会被引去 step-up——重认证后自然回到正确状态。带 JSON 错误体却无标记的 403 一定是
+    /// 明确描述过的失败（未来的权限拒绝形态），如实展示。</para>
     /// </remarks>
-    private static bool MarksMfaRequired(string body)
+    private static bool IsMfaGate(string body)
     {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return true;
+        }
+
         try
         {
             using var document = JsonDocument.Parse(body);
@@ -204,6 +216,7 @@ public sealed class AdminApiProxy(
         }
         catch (JsonException)
         {
+            // 非 JSON 响应体（HTML 等）不是 server 门禁的形态，按无标记处理。
             return false;
         }
 

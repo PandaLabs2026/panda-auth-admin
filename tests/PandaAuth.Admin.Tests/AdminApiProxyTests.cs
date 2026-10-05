@@ -241,10 +241,12 @@ public class AdminApiProxyTests
     }
 
     [Fact]
-    public async Task Forward_Upstream403EmptyBody_NoMfaHeader()
+    public async Task Forward_Upstream403EmptyBody_MarksMfaHeader_Transitional()
     {
-        // server 侧 MFA/WebAuthn 门禁目前是裸 Forbid()（空体 403）：不可识别即不加头，
-        // 由前端按普通 403 展示（详见 PR 行为决策——server 侧补标记字段前，step-up 跳转不触发）。
+        // 过渡期兼容（钉住 server 现状）：server 仓 15 处 MFA/WebAuthn 门禁全部是裸 Forbid()，
+        // 空体 403 且无任何标记——不按 step-up 处理的话，管理员做门禁操作只能看到裸 HTTP 403、
+        // 无法从 UI 进入 step-up。server 侧补上 mfaRequired 标记后应删除该过渡分支
+        // （IsMfaGate 的空体短路与本测试需同步退役）。
         var handler = new StubHttpMessageHandler(HttpStatusCode.Forbidden) { Body = string.Empty };
         var accessor = new StubHttpContextAccessor(ContextWithTokens("token-1", null));
 
@@ -253,7 +255,7 @@ public class AdminApiProxyTests
 
         var (status, headers, _) = await ExecuteAsync(response);
         Assert.Equal(StatusCodes.Status403Forbidden, status);
-        Assert.False(headers.ContainsKey("X-Panda-Mfa-Required"));
+        Assert.Equal("true", headers["X-Panda-Mfa-Required"].ToString());
     }
 
     [Fact]
