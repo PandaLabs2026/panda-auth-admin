@@ -1,14 +1,7 @@
 import { useEffect, useState } from "react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-
-type Session = {
-  subject: string
-  name: string | null
-  email: string | null
-  nickname: string | null
-  roles: string[]
-}
+import { apiGet, type Session } from "@/lib/api"
 
 /** OIDC discovery 的常用子集（公网同源端点 /.well-known/openid-configuration，无凭据）。 */
 type Discovery = {
@@ -42,21 +35,14 @@ export default function DashboardPage() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    fetch("/admin/api/session", { headers: { "X-Requested-With": "XMLHttpRequest" } })
-      .then(async (response) => {
-        // 未登录 → 全页跳登录挑战端点（SPA 路由之外，见 login.tsx 注释）。
-        if (response.status === 401) {
-          window.location.assign("/admin/login")
-          return null
-        }
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        return (await response.json()) as Session
-      })
-      .then((data) => data && setSession(data))
+    // 会话经统一 API 层取（401 自动带 returnUrl 全页跳登录，见 api.ts），页面不再各抄一份。
+    apiGet<Session>("/admin/api/session")
+      .then(setSession)
       .catch(() => setError(true))
       .finally(() => setLoading(false))
 
-    // IDP 状态：discovery 是公网同源端点，CSP（connect-src 'self'）放行，无需 BFF 代理。
+    // IDP 状态：discovery 是公网同源端点，CSP（connect-src 'self'）放行，无需 BFF 代理，
+    // 也没有会话语义——保持直取，不经 apiGet。
     fetch("/.well-known/openid-configuration", { headers: { "X-Requested-With": "XMLHttpRequest" } })
       .then(async (response) => (response.ok ? ((await response.json()) as Discovery) : null))
       .then((data) => setDiscovery(data))

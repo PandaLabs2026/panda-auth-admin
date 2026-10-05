@@ -1,6 +1,7 @@
 using System.Net;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using OpenIddict.Client;
@@ -173,6 +174,56 @@ public sealed class AdminApiProxy(
     {
         var contentType = response.Content.Headers.ContentType?.ToString() ?? "application/json";
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        return Results.Content(body, contentType, statusCode: (int)response.StatusCode);
+
+        // 403 语义二分：上游 MFA 门禁（server 侧 Forbid）与真正的权限拒绝在状态码上不可分，
+        // 前端把任意 403 当 step-up 会把权限拒绝误导向 /account/mfa。以响应体里的 MFA 标记
+        // 字段（ProblemDetails 的 mfaRequired 扩展，camelCase/snake_case 均认）判定，命中才
+        // 附加 X-Panda-Mfa-Required: true 供前端精确跳转；裸 403 维持普通透传，走错误展示。
+        var mfaRequired = response.StatusCode == HttpStatusCode.Forbidden && MarksMfaRequired(body);
+        return new UpstreamResult((int)response.StatusCode, contentType, body, mfaRequired);
+    }
+
+    /// <summary>上游响应体是否带 MFA 门禁标记（顶层或 ProblemDetails extensions 下的布尔真值）。</summary>
+    /// <remarks>
+    /// 刻意容忍两种命名（camelCase 是 MVC ProblemDetails 序列化惯例，snake_case 是协议层惯例）：
+    /// server 侧尚未统一契约，此处只认**布尔真**——字符串/数字不算，避免「字段存在即命中」的误判。
+    /// 解析失败（空体/HTML——server 侧 Forbid() 即空体 403）一律按无标记处理。
+    /// </remarks>
+    private static bool MarksMfaRequired(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object
+                && (IsTrue(root, "mfaRequired")
+                    || IsTrue(root, "mfa_required")
+                    || (root.TryGetProperty("extensions", out var extensions)
+                        && extensions.ValueKind == JsonValueKind.Object
+                        && (IsTrue(extensions, "mfaRequired") || IsTrue(extensions, "mfa_required"))));
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+
+        static bool IsTrue(JsonElement element, string name)
+            => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
+    }
+
+    /// <summary>上游透传结果：除可选的 MFA 标记响应头外不改动任何内容（Results.Content 不支持自定义头）。</summary>
+    private sealed class UpstreamResult(int statusCode, string contentType, string body, bool mfaRequired) : IResult
+    {
+        public async Task ExecuteAsync(HttpContext httpContext)
+        {
+            httpContext.Response.StatusCode = statusCode;
+            httpContext.Response.ContentType = contentType;
+            if (mfaRequired)
+            {
+                httpContext.Response.Headers["X-Panda-Mfa-Required"] = "true";
+            }
+
+            await httpContext.Response.WriteAsync(body, httpContext.RequestAborted);
+        }
     }
 }
