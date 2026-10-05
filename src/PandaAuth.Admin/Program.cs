@@ -80,6 +80,16 @@ if (string.IsNullOrWhiteSpace(clientSecret))
     throw new InvalidOperationException("缺少 Auth:ClientSecret 配置（admin-web 为机密客户端，密钥须由部署环境注入）。");
 }
 
+// 租户工作台门户入口（部署注入，如 https://t0000.s001.pandalabs.cn）：配置后侧边栏显示
+// 「返回熊猫门户」。信任级别与 Auth:Issuer 相同——来自受控部署环境而非用户输入；未配置时
+// 前端隐藏链接（不阻断启动）；配置了但不是绝对 https URL 则启动失败（错误值比缺失更危险）。
+var portalHomeUrl = builder.Configuration["Auth:PortalHomeUrl"];
+if (!string.IsNullOrWhiteSpace(portalHomeUrl) &&
+    (!Uri.TryCreate(portalHomeUrl, UriKind.Absolute, out var portalHome) || portalHome.Scheme != Uri.UriSchemeHttps))
+{
+    throw new InvalidOperationException("Auth:PortalHomeUrl 配置了但不是绝对 https URL；请修正或移除该配置。");
+}
+
 // 登出撤销客户端。超时取值的读取与校验都在 AddTokenRevocation 内、启动期完成——
 // 不能留给 AddHttpClient 的 configure 委托（它只在解析该类型时才执行）。
 builder.Services.AddTokenRevocation(builder.Configuration, new TokenRevocationOptions(issuer, clientId, clientSecret));
@@ -313,6 +323,7 @@ app.MapGet("/admin/api/session", (HttpContext context) =>
         email = context.User.FindFirst(Claims.Email)?.Value,
         nickname = context.User.FindFirst(PandaAuthClaims.Nickname)?.Value,
         roles = context.User.FindAll(Claims.Role).Select(claim => claim.Value).ToArray(),
+        portalHomeUrl,
     });
 }).AllowAnonymous();
 
