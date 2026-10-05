@@ -318,11 +318,11 @@ app.MapGet("/admin/api/session", (HttpContext context) =>
     });
 }).AllowAnonymous();
 
-// 路由值的规范化转义：ASP.NET 路由对路由值做**部分**解码（%3F→? 等还原，但 %2F 保留转义
-// 以维持路径段语义）——直接 EscapeDataString 会把残留的 %2F 二次转义成 %252F。
-// 先 UnescapeDataString 还原成原始值，再统一转一层：无论路由交来哪种混合形态，
-// 上游拿到的都是恰好一层转义的单一路径段。share 契约侧的配套收敛另行 PR。
-static string EscapeRouteValue(string value) => Uri.EscapeDataString(Uri.UnescapeDataString(value));
+// 路由值的归一化还原：ASP.NET 路由对路由值做**部分**解码（%3F→? 等还原，但 %2F 保留转义
+// 以维持路径段语义）。此处只负责 UnescapeDataString 还原成**原始 id**——统一转义由
+// share 契约（PandaAuthAdminApi）负责，server/admin 两端共引一处；调用方若再自行
+// EscapeDataString 会把 % 二次转义成 %25（配套 share PR：fix/admin-api-path-escaping）。
+static string NormalizeRouteValue(string value) => Uri.UnescapeDataString(value);
 
 // 变更类端点的防伪样板收敛：此前逐端点抄 try/catch（加端点 = 再抄一段，漏抄一段 = 该端点
 // CSRF 裸奔）。端点只声明业务转发参数；防伪失败统一 400，行为与收敛前一致。
@@ -365,8 +365,8 @@ app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient rev
 // ---- Admin 数据 API 代理端点（admin 0.3）----
 // 全部落在 FallbackPolicy 下（需已认证）；变更类（POST/PUT/DELETE）经 WithAntiforgeryAsync；
 // GET 透传查询串。上游路径取自 share 契约常量（PandaAuthAdminApi），两端不写 URL 字面量。
-// 路由值一律经 EscapeRouteValue（见上）规范化转义后拼上游路径：直拼即把调用方可控内容
-// 注入上游 query/路径段（? 与 .. 皆然）；share 契约侧的配套收敛另行 PR。
+// 路由值一律经 NormalizeRouteValue（见上）还原为原始 id 后交给契约——统一转义在契约侧完成，
+// 直拼（不还原）即把调用方可控内容注入上游 query/路径段（? 与 .. 皆然）。
 async Task<string?> ReadJsonBodyAsync(HttpContext ctx)
 {
     // Content-Length 为 null 不等于「没有体」：chunked（Transfer-Encoding）请求没有
@@ -390,19 +390,19 @@ app.MapGet("/admin/api/users", (HttpContext ctx, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.Users + ctx.Request.QueryString.Value, HttpMethod.Get));
 
 app.MapGet("/admin/api/users/{id}", (string id, AdminApiProxy proxy)
-    => proxy.ForwardAsync(PandaAuthAdminApi.User(EscapeRouteValue(id)), HttpMethod.Get));
+    => proxy.ForwardAsync(PandaAuthAdminApi.User(NormalizeRouteValue(id)), HttpMethod.Get));
 
 app.MapPost("/admin/api/users/{id}/status", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserStatus(EscapeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserStatus(NormalizeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
 app.MapPost("/admin/api/users/{id}/reset-password", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserResetPassword(EscapeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserResetPassword(NormalizeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
 app.MapPost("/admin/api/users", (HttpContext ctx, AdminApiProxy proxy) =>
     WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.Users, HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
 app.MapGet("/admin/api/users/{id}/claims", (string id, AdminApiProxy proxy)
-    => proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(EscapeRouteValue(id)), HttpMethod.Get));
+    => proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(NormalizeRouteValue(id)), HttpMethod.Get));
 
 app.MapGet("/admin/api/roles", async (HttpContext context, AdminApiProxy proxy) =>
 {
@@ -411,34 +411,34 @@ app.MapGet("/admin/api/roles", async (HttpContext context, AdminApiProxy proxy) 
 });
 
 app.MapPost("/admin/api/users/{id}/claims", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(EscapeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(NormalizeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
 app.MapDelete("/admin/api/users/{id}/claims/{claimId:long}", (string id, long claimId, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserClaim(EscapeRouteValue(id), claimId), HttpMethod.Delete)));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserClaim(NormalizeRouteValue(id), claimId), HttpMethod.Delete)));
 
 app.MapGet("/admin/api/roles/{id}/claims", (string id, AdminApiProxy proxy)
-    => proxy.ForwardAsync(PandaAuthAdminApi.RoleClaims(EscapeRouteValue(id)), HttpMethod.Get));
+    => proxy.ForwardAsync(PandaAuthAdminApi.RoleClaims(NormalizeRouteValue(id)), HttpMethod.Get));
 
 app.MapPost("/admin/api/roles/{id}/claims", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.RoleClaims(EscapeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.RoleClaims(NormalizeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
 app.MapDelete("/admin/api/roles/{id}/claims/{claimId:long}", (string id, long claimId, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.RoleClaim(EscapeRouteValue(id), claimId), HttpMethod.Delete)));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.RoleClaim(NormalizeRouteValue(id), claimId), HttpMethod.Delete)));
 
 app.MapPut("/admin/api/users/{id}/roles", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserRoles(EscapeRouteValue(id)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserRoles(NormalizeRouteValue(id)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
 
 app.MapPost("/admin/api/users/{id}/unlock", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserUnlock(EscapeRouteValue(id)), HttpMethod.Post)));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserUnlock(NormalizeRouteValue(id)), HttpMethod.Post)));
 
 app.MapPut("/admin/api/users/{id}/profile", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(EscapeRouteValue(id)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(NormalizeRouteValue(id)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
 
 app.MapPost("/admin/api/users/{id}/reset-2fa", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserResetTwoFactor(EscapeRouteValue(id)), HttpMethod.Post)));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserResetTwoFactor(NormalizeRouteValue(id)), HttpMethod.Post)));
 
 app.MapPost("/admin/api/users/{id}/deactivate", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserDeactivate(EscapeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserDeactivate(NormalizeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
 app.MapGet("/admin/api/clients", (HttpContext ctx, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.Clients + ctx.Request.QueryString.Value, HttpMethod.Get));
@@ -447,16 +447,16 @@ app.MapGet("/admin/api/clients/options", (AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.ClientOptions, HttpMethod.Get));
 
 app.MapGet("/admin/api/clients/{clientId}", (string clientId, AdminApiProxy proxy)
-    => proxy.ForwardAsync(PandaAuthAdminApi.Client(EscapeRouteValue(clientId)), HttpMethod.Get));
+    => proxy.ForwardAsync(PandaAuthAdminApi.Client(NormalizeRouteValue(clientId)), HttpMethod.Get));
 
 app.MapPut("/admin/api/clients/{clientId}/redirect-uris", (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.ClientRedirectUris(EscapeRouteValue(clientId)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.ClientRedirectUris(NormalizeRouteValue(clientId)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
 
 app.MapPut("/admin/api/clients/{clientId}/permissions", (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.ClientPermissions(EscapeRouteValue(clientId)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.ClientPermissions(NormalizeRouteValue(clientId)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
 
 app.MapPost("/admin/api/clients/{clientId}/rotate-secret", (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.ClientRotateSecret(EscapeRouteValue(clientId)), HttpMethod.Post)));
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.ClientRotateSecret(NormalizeRouteValue(clientId)), HttpMethod.Post)));
 
 app.MapGet("/admin/api/audit/logins", (HttpContext ctx, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.AuditLogins + ctx.Request.QueryString.Value, HttpMethod.Get));
