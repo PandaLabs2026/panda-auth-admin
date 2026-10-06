@@ -185,20 +185,15 @@ public class AdminApiProxyTests
     [Fact]
     public async Task Forward_HttpClientTimeout_Yields502()
     {
-    [Fact]
-    public async Task Forward_HttpClientTimeout_Yields502()
-    {
         // HttpClient.Timeout 到点抛 TaskCanceledException 且不置调用方 token——此前只
         // catch HttpRequestException，超时漏成裸 500；必须与不可达同样折算 502。
         var handler = new StubHttpMessageHandler { ThrowOnSend = new TaskCanceledException("timeout") };
         var accessor = new StubHttpContextAccessor(ContextWithTokens("token-1", "refresh-1"));
 
-
         var response = await CreateProxy(handler, accessor).ForwardAsync(
             PandaAuthAdminApi.Users, HttpMethod.Get);
-        Assert.Equal(StatusCodes.Status502BadGateway, await StatusOfAsync(response));
-    }
 
+        Assert.Equal(StatusCodes.Status502BadGateway, await StatusOfAsync(response));
     }
 
     [Fact]
@@ -216,72 +211,6 @@ public class AdminApiProxyTests
                 PandaAuthAdminApi.Users, HttpMethod.Get, cancellationToken: cts.Token));
     }
 
-    [Fact]
-    public async Task Forward_Concurrent401s_LateArrivingRequest_RefreshesOnceViaTicketReread()
-    {
-        // 刷新完成后到达的请求（浏览器已吃到 Set-Cookie）：单飞层一——重读票据即见新 AT。
-        // subject 与其它并发用例互异：刷新闸门按 subject 落在 static 字典，避免用例间串味。
-        await RunConcurrent401sAsync(freezeRequestCookie: false, subject: "actor-reread");
-    }
-
-    [Fact]
-    public async Task Forward_Concurrent401s_InFlightRequest_RefreshesOnceViaWinnerReuse()
-    {
-        // 真实浏览器语义：在途请求的 Cookie 在发送时已定格，重读票据仍是旧 RT——
-        // 只能走单飞层二（复用同 subject 赢家刚换出的新 AT）。生产并发 401 正是这条路径。
-        await RunConcurrent401sAsync(freezeRequestCookie: true, subject: "actor-inflight");
-    }
-
-    /// <summary>
-    /// 并发两个 401 共享同一只一次性 RT 的单飞断言：IDP 桩只收到一次刷新、两个请求都成功，
-    /// 且会话回写保留原票据的持久化属性。两个用例分别钉住层一（票据重读）与层二（赢家复用）。
-    /// </summary>
-    private static async Task RunConcurrent401sAsync(bool freezeRequestCookie, string subject)
-    {
-        var (principal, properties) = PrincipalWithTokens("token-1", "refresh-1", subject);
-        properties.IsPersistent = true;
-        properties.ExpiresUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
-        var jar = new BrowserCookieJar(principal, properties);
-        var context1 = ContextFromJar(jar, freezeRequestCookie, principal);
-        var context2 = ContextFromJar(jar, freezeRequestCookie, principal);
-
-        var refresh = new StubRefreshClient(TimeSpan.FromMilliseconds(150));
-        var proxy1 = CreateProxy(
-            new StubHttpMessageHandler { RejectBearerToken = "token-1" }, new StubHttpContextAccessor(context1), refresh);
-        var proxy2 = CreateProxy(
-            new StubHttpMessageHandler { RejectBearerToken = "token-1" }, new StubHttpContextAccessor(context2), refresh);
-
-        var first = Task.Run(() => proxy1.ForwardAsync(PandaAuthAdminApi.Users, HttpMethod.Get));
-        var second = Task.Run(() => proxy2.ForwardAsync(PandaAuthAdminApi.Users, HttpMethod.Get));
-        var responses = await Task.WhenAll(first, second);
-
-        Assert.Equal(StatusCodes.Status200OK, await StatusOfAsync(responses[0]));
-        Assert.Equal(StatusCodes.Status200OK, await StatusOfAsync(responses[1]));
-
-        // 单飞：IDP 桩只收到一次刷新，用的正是出发时那只 RT。
-        Assert.Equal("refresh-1", Assert.Single(refresh.RefreshTokens));
-
-        // 会话回写：新令牌就位，且票据持久化属性（IsPersistent/ExpiresUtc）原样继承——
-        // 刷新是常态路径，重置即等于每次续满 2 小时窗口、改写「记住我」语义。
-        var rewritten = jar.ReadTicket().Properties;
-        Assert.Equal("token-2", rewritten.GetTokenValue(SessionTokens.AccessTokenName));
-        Assert.Equal("refresh-2", rewritten.GetTokenValue(SessionTokens.RefreshTokenName));
-        Assert.True(rewritten.IsPersistent);
-        Assert.Equal(properties.ExpiresUtc, rewritten.ExpiresUtc);
-    }
-
-    private static HttpContext ContextFromJar(BrowserCookieJar jar, bool freezeRequestCookie, ClaimsPrincipal principal)
-    {
-        var services = new ServiceCollection();
-        services.AddLogging();
-        services.AddSingleton<IAuthenticationService>(new JarAuthenticationService(jar, freezeRequestCookie));
-        var http = new DefaultHttpContext
-        {
-            RequestServices = services.BuildServiceProvider(),
-            User = principal,
-        };
-        http.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("203.0.113.9");
-        return http;
     // ---- 403 语义二分：只有带 MFA 标记的上游 403 才附加 X-Panda-Mfa-Required ----
 
     [Fact]
@@ -384,11 +313,78 @@ public class AdminApiProxyTests
 
         var response = await CreateProxy(handler, accessor).ForwardAsync(
             PandaAuthAdminApi.Users, HttpMethod.Get);
+
         var (status, headers, _) = await ExecuteAsync(response);
         Assert.Equal(StatusCodes.Status200OK, status);
         Assert.False(headers.ContainsKey("X-Panda-Mfa-Required"));
     }
 
+    [Fact]
+    public async Task Forward_Concurrent401s_LateArrivingRequest_RefreshesOnceViaTicketReread()
+    {
+        // 刷新完成后到达的请求（浏览器已吃到 Set-Cookie）：单飞层一——重读票据即见新 AT。
+        // subject 与其它并发用例互异：刷新闸门按 subject 落在 static 字典，避免用例间串味。
+        await RunConcurrent401sAsync(freezeRequestCookie: false, subject: "actor-reread");
+    }
+
+    [Fact]
+    public async Task Forward_Concurrent401s_InFlightRequest_RefreshesOnceViaWinnerReuse()
+    {
+        // 真实浏览器语义：在途请求的 Cookie 在发送时已定格，重读票据仍是旧 RT——
+        // 只能走单飞层二（复用同 subject 赢家刚换出的新 AT）。生产并发 401 正是这条路径。
+        await RunConcurrent401sAsync(freezeRequestCookie: true, subject: "actor-inflight");
+    }
+
+    /// <summary>
+    /// 并发两个 401 共享同一只一次性 RT 的单飞断言：IDP 桩只收到一次刷新、两个请求都成功，
+    /// 且会话回写保留原票据的持久化属性。两个用例分别钉住层一（票据重读）与层二（赢家复用）。
+    /// </summary>
+    private static async Task RunConcurrent401sAsync(bool freezeRequestCookie, string subject)
+    {
+        var (principal, properties) = PrincipalWithTokens("token-1", "refresh-1", subject);
+        properties.IsPersistent = true;
+        properties.ExpiresUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var jar = new BrowserCookieJar(principal, properties);
+        var context1 = ContextFromJar(jar, freezeRequestCookie, principal);
+        var context2 = ContextFromJar(jar, freezeRequestCookie, principal);
+
+        var refresh = new StubRefreshClient(TimeSpan.FromMilliseconds(150));
+        var proxy1 = CreateProxy(
+            new StubHttpMessageHandler { RejectBearerToken = "token-1" }, new StubHttpContextAccessor(context1), refresh);
+        var proxy2 = CreateProxy(
+            new StubHttpMessageHandler { RejectBearerToken = "token-1" }, new StubHttpContextAccessor(context2), refresh);
+
+        var first = Task.Run(() => proxy1.ForwardAsync(PandaAuthAdminApi.Users, HttpMethod.Get));
+        var second = Task.Run(() => proxy2.ForwardAsync(PandaAuthAdminApi.Users, HttpMethod.Get));
+        var responses = await Task.WhenAll(first, second);
+
+        Assert.Equal(StatusCodes.Status200OK, await StatusOfAsync(responses[0]));
+        Assert.Equal(StatusCodes.Status200OK, await StatusOfAsync(responses[1]));
+
+        // 单飞：IDP 桩只收到一次刷新，用的正是出发时那只 RT。
+        Assert.Equal("refresh-1", Assert.Single(refresh.RefreshTokens));
+
+        // 会话回写：新令牌就位，且票据持久化属性（IsPersistent/ExpiresUtc）原样继承——
+        // 刷新是常态路径，重置即等于每次续满 2 小时窗口、改写「记住我」语义。
+        var rewritten = jar.ReadTicket().Properties;
+        Assert.Equal("token-2", rewritten.GetTokenValue(SessionTokens.AccessTokenName));
+        Assert.Equal("refresh-2", rewritten.GetTokenValue(SessionTokens.RefreshTokenName));
+        Assert.True(rewritten.IsPersistent);
+        Assert.Equal(properties.ExpiresUtc, rewritten.ExpiresUtc);
+    }
+
+    private static HttpContext ContextFromJar(BrowserCookieJar jar, bool freezeRequestCookie, ClaimsPrincipal principal)
+    {
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IAuthenticationService>(new JarAuthenticationService(jar, freezeRequestCookie));
+        var http = new DefaultHttpContext
+        {
+            RequestServices = services.BuildServiceProvider(),
+            User = principal,
+        };
+        http.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("203.0.113.9");
+        return http;
     }
 
     // ---- 桩：扩展自共享 StubHttpMessageHandler（补齐头部读取与多值头） ----
