@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
-import { apiGet } from "@/lib/api"
+import { apiGet, type Session } from "@/lib/api"
 
 import { Button } from "@/components/ui/button"
 
@@ -51,8 +51,6 @@ async function logout() {
  * 路由切换只替换 <Outlet/>，导航与登出常驻（此前外壳只存在于概览页，
  * 进入子模块后侧边栏整体消失，2026-09-19 生产走查发现）。
  */
-type Session = { subject: string; name: string | null; email: string | null; nickname: string | null; roles: string[] }
-
 export default function AppShell() {
   const { pathname } = useLocation()
   const title = TITLES[pathname] ?? "管理后台"

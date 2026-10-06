@@ -86,6 +86,27 @@ if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
         .SetApplicationName("PandaAuth.Admin");
 }
 
+// 生产环境的 IDP 地址同样失败关闭：issuer/内网基址缺失**或仍是开发默认值**即拒绝启动。
+// 只查缺失并不够——镜像里烤着开发取值的 appsettings.json，绕过 compose 环境变量直跑容器时
+// 键永远「存在」，静默回退等于把公网流量指向开发地址、把配置事故变成运行期偶发故障。
+// compose 部署恒注入真实值（deploy/docker-compose.yml 以 ${AUTH_ISSUER:?} 强制），
+// 正常生产不受影响；开发环境保留回环默认，维持零配置启动。与下方 ClientSecret 同款哲学。
+// 位置必须在首个 new Uri(...) 之前：空值先在这里被拦下，否则 Uri 构造先炸出 UriFormatException。
+if (builder.Environment.IsProduction())
+{
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Auth:Issuer"])
+        || string.Equals(builder.Configuration["Auth:Issuer"]!.Trim(), "http://localhost:9004/", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Auth:Issuer 缺失或仍是开发默认值（生产不得使用 http://localhost:9004/，须由部署环境注入真实 issuer）。");
+    }
+
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Auth:IdpInternalBaseAddress"])
+        || string.Equals(builder.Configuration["Auth:IdpInternalBaseAddress"]!.Trim(), "http://127.0.0.1:9004/", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Auth:IdpInternalBaseAddress 缺失或仍是开发默认值（生产须由部署环境注入代理上游地址）。");
+    }
+}
+
 // OpenIddict 客户端加密/签名密钥（保护在途登录 state）：DP 路径已配置则同目录 load-or-create
 // client-keys.json——重启后旧 state 仍可完成回调，不再无声作废；开发（未配置 DP 路径）维持
 // ephemeral（进程内临时材料），app.Logger 启动告警一次。
