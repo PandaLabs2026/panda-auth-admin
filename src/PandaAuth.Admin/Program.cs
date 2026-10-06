@@ -26,7 +26,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     TenantForwardedHeaders.Configure(options, builder.Configuration);
 });
 
-builder.Services.AddAntiforgery(options => options.HeaderName = "X-XSRF-Token");
+// 防伪 Cookie 恒 Secure（生产），与下方会话 Cookie 的 Always 约束一致：防伪令牌不落明文。
+// 但 Antiforgery 对 Always 是服务端 fail-closed——非 SSL 请求直接抛 InvalidOperationException
+//（DefaultAntiforgery.CheckSSLConfig），/admin/api/antiforgery 与 /admin/api/logout 都会 500，
+// 后者的抛出不在 AntiforgeryValidationException 的 catch 内。浏览器对 localhost http 固然接受
+// Secure cookie，中间件不等浏览器：本地开发是 launchSettings 直连 http://localhost:9006（无 TLS），
+// 无条件 Always 会打断登出链路，故仅非 Development 环境收紧；生产容器为
+// ASPNETCORE_ENVIRONMENT=Production，且经 Caddy TLS 反代（X-Forwarded-Proto 还原 https）。
+// 行为由 AntiforgeryCookieSecurePolicyTests 钉住。
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-XSRF-Token";
+    if (!builder.Environment.IsDevelopment())
+    {
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    }
+});
 builder.Services
     .AddAuthentication(options =>
     {
@@ -133,7 +148,9 @@ builder.Services.AddOpenIddict()
                 Scopes.Roles,
                 Scopes.OfflineAccess,
             },
-            // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）；生产值由 compose 注入。
+            // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）。
+            // 相对 URI 按请求的 host/scheme 解析，开发与生产同值可用；此处为硬编码，
+            // 不存在按环境注入的通路（appsettings 的 Auth:RedirectUri 等键已随本改动删除）。
             RedirectUri = new Uri("admin/callback/login/pandaauth", UriKind.Relative),
             // post-logout 回调必须是专用路径：/admin/ 本身会被 OpenIddict 客户端拦截做登出回调提取，
 // 无参数导航也被当作无 state 回调以 400 拒绝；且 IDP 种子登记的本来就是专用路径，
