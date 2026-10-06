@@ -42,8 +42,14 @@ public class AntiforgeryCookieSecurePolicyTests
         protected override void ConfigureWebHost(IWebHostBuilder builder)
         {
             builder.UseEnvironment(environment);
-            // Program.cs 对机密客户端密钥失败关闭，Production 无 Development 覆盖文件，须显式注入。
+            // Program.cs 对机密客户端密钥失败关闭，Production 无 Development 覆盖文件，须显式注入；
+            // 生产形态的 issuer/内网基址 fail-closed 门（fix/api-semantics）同样要求真实值。
             builder.UseSetting("Auth:ClientSecret", "unit-test-secret");
+            if (environment == "Production")
+            {
+                builder.UseSetting("Auth:Issuer", "https://auth.pandalabs.cn/");
+                builder.UseSetting("Auth:IdpInternalBaseAddress", "http://127.0.0.1:6000/");
+            }
             builder.ConfigureServices(services =>
             {
                 services.AddAuthentication()
