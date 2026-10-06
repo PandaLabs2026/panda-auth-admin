@@ -27,7 +27,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     TenantForwardedHeaders.Configure(options, builder.Configuration);
 });
 
-builder.Services.AddAntiforgery(options => options.HeaderName = "X-XSRF-Token");
+// 防伪 Cookie 恒 Secure（生产），与下方会话 Cookie 的 Always 约束一致：防伪令牌不落明文。
+// 但 Antiforgery 对 Always 是服务端 fail-closed——非 SSL 请求直接抛 InvalidOperationException
+//（DefaultAntiforgery.CheckSSLConfig），/admin/api/antiforgery 与 /admin/api/logout 都会 500，
+// 后者的抛出不在 AntiforgeryValidationException 的 catch 内。浏览器对 localhost http 固然接受
+// Secure cookie，中间件不等浏览器：本地开发是 launchSettings 直连 http://localhost:9006（无 TLS），
+// 无条件 Always 会打断登出链路，故仅非 Development 环境收紧；生产容器为
+// ASPNETCORE_ENVIRONMENT=Production，且经 Caddy TLS 反代（X-Forwarded-Proto 还原 https）。
+// 行为由 AntiforgeryCookieSecurePolicyTests 钉住。
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-XSRF-Token";
+    if (!builder.Environment.IsDevelopment())
+    {
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    }
+});
 builder.Services
     .AddAuthentication(options =>
     {
@@ -100,6 +115,9 @@ builder.Services.AddTokenRevocation(builder.Configuration, new TokenRevocationOp
 // IDP 侧另有 Bearer + admin 角色门禁，双保险。
 var idpInternalBase = builder.Configuration["Auth:IdpInternalBaseAddress"] ?? "http://127.0.0.1:9004/";
 builder.Services.AddHttpContextAccessor();
+// 会话刷新接缝：生产实现包装 OpenIddict 客户端；单测经该接口桩刷新链路
+//（OpenIddictClientService 的刷新方法非虚，具体类无法继承重写）。
+builder.Services.AddSingleton<IAdminSessionRefresher, OpenIddictAdminSessionRefresher>();
 builder.Services.AddHttpClient<AdminApiProxy>(client =>
 {
     client.BaseAddress = new Uri(idpInternalBase);
@@ -152,7 +170,9 @@ builder.Services.AddOpenIddict()
                 Scopes.Roles,
                 Scopes.OfflineAccess,
             },
-            // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）；生产值由 compose 注入。
+            // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）。
+            // 相对 URI 按请求的 host/scheme 解析，开发与生产同值可用；此处为硬编码，
+            // 不存在按环境注入的通路（appsettings 的 Auth:RedirectUri 等键已随本改动删除）。
             RedirectUri = new Uri("admin/callback/login/pandaauth", UriKind.Relative),
             // post-logout 回调必须是专用路径：/admin/ 本身会被 OpenIddict 客户端拦截做登出回调提取，
 // 无参数导航也被当作无 state 回调以 400 拒绝；且 IDP 种子登记的本来就是专用路径，
@@ -210,6 +230,19 @@ if (clientEncryptionCredentials is null)
     // 这在本地无伤（重启重登即可），但若出现在生产（配置回归）意味着每次发版都把在途登录打回。
     app.Logger.LogWarning("未配置 Auth:DataProtectionKeyPath：OpenIddict 客户端密钥为临时材料，重启将作废全部在途登录（应仅出现在开发环境）。");
 }
+
+// 全局异常兜底：管线内任何未处理异常统一折算为 ProblemDetails JSON——此前会落到裸 500
+// 纯文本，前端 apiSend 的 ProblemDetails 解析路径对它无从下手。异常本体由
+// ExceptionHandlerMiddleware 记日志，这里只回壳（title/detail 固定文案）：管理面响应
+// 不得外泄内部堆栈与路径细节。放在管线最前是为了罩住其后全部中间件与端点（含代理转发）；
+// SecurityHeaders 在进入后续管线前已写好响应头，错误响应同样带安全头。
+app.UseExceptionHandler(errorApp => errorApp.Run(async httpContext =>
+{
+    await Results.Problem(
+        statusCode: StatusCodes.Status500InternalServerError,
+        title: "服务器内部错误",
+        detail: "请求处理失败，请稍后重试。").ExecuteAsync(httpContext);
+}));
 
 // Legacy host-network runtime trusts loopback; tenant bridge runtime trusts only its exact Docker gateway.
 app.UseForwardedHeaders(app.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>().Value);
