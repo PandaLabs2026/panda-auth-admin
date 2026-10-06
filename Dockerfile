@@ -1,4 +1,4 @@
-# PandaAuth.Admin 镜像（管理后台 BFF + React SPA，生产绑定 127.0.0.1:9006）
+# PandaAuth.Admin 镜像（管理后台 BFF + React SPA；开发绑定 localhost:9006，生产端口由部署 env ASPNETCORE_URLS 注入，t0000 现网 10002）
 # 工作区根目录为构建上下文，包含同级 panda-auth-share ProjectReference。
 #   docker build -f panda-auth-admin/Dockerfile -t panda-auth-admin:latest .
 # 上下文过滤走同目录的 Dockerfile.dockerignore（BuildKit 按 Dockerfile 名取用），
