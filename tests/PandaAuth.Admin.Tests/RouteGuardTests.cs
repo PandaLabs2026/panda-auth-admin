@@ -1,14 +1,19 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Security.Claims;
+using System.Text;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using PandaAuth.Shared;
 using Xunit;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
@@ -57,6 +62,78 @@ public class RouteGuardTests
         }
     }
 
+    /// <summary>
+    /// 代理转发桩工厂：真实 Cookie 方案 + 直签会话票据（直通格式器），并把代理 typed client 的
+    /// 上游 handler 换成记录桩——据此断言「路由值转义后拼出的上游路径」这一 BFF 层行为
+    /// （AdminApiProxyTests 只能断言代理本身，覆盖不到 Program.cs 端点处的转义拼装）。
+    /// </summary>
+    private sealed class ProxySpyFactory : WebApplicationFactory<Program>
+    {
+        /// <summary>直通 IDataProtector：票据格式器只做序列化/编码，不加密——测试可两侧同构。</summary>
+        private sealed class PassThroughProtector : IDataProtector
+        {
+            public IDataProtector CreateProtector(string purpose) => this;
+            public byte[] Protect(byte[] plaintext) => plaintext;
+            public byte[] Unprotect(byte[] protectedData) => protectedData;
+        }
+
+        /// <summary>上游记录桩：记录真实发出的请求 URI，回固定 200 JSON。</summary>
+        public sealed class RecordingHandler : HttpMessageHandler
+        {
+            private readonly List<Uri> _requests = [];
+
+            public IReadOnlyList<Uri> Requests => _requests;
+
+            protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            {
+                _requests.Add(request.RequestUri!);
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"items":[],"total":0,"page":1,"pageSize":20}""", Encoding.UTF8, "application/json"),
+                });
+            }
+        }
+
+        public RecordingHandler Spy { get; } = new();
+
+        private readonly SecureDataFormat<AuthenticationTicket> _ticketFormat =
+            new(TicketSerializer.Default, new PassThroughProtector());
+
+        protected override void ConfigureWebHost(IWebHostBuilder builder)
+        {
+            builder.UseEnvironment("Development");
+            builder.ConfigureServices(services =>
+            {
+                // 换掉 Cookie 方案的票据格式器：真实 DataProtection 密钥环在测试里无从预置，
+                // 直通格式器让测试能以同一格式直签带 access_token 的会话票据（Cookie 名与
+                // 方案名仍是生产的 PandaAuth.Admin / Cookies）。
+                services.PostConfigure<CookieAuthenticationOptions>(
+                    CookieAuthenticationDefaults.AuthenticationScheme,
+                    options => options.TicketDataFormat = _ticketFormat);
+                // 代理 typed client 的上游 handler 换成记录桩（对所有 HttpClientFactory 生效）。
+                services.ConfigureAll<HttpClientFactoryOptions>(options =>
+                    options.HttpMessageHandlerBuilderActions.Add(build => build.PrimaryHandler = Spy));
+            });
+        }
+
+        /// <summary>直签带 access_token 的会话票据 Cookie 值（代理见到 AT 才会真正发上游请求）。</summary>
+        public string MintSessionCookie()
+        {
+            var identity = new ClaimsIdentity(
+            [
+                new Claim(Claims.Subject, "spy-admin"),
+                new Claim(Claims.Role, PandaAuthRoles.Admin),
+            ], CookieAuthenticationDefaults.AuthenticationScheme, Claims.Name, Claims.Role);
+            var properties = new AuthenticationProperties();
+            properties.StoreTokens(
+            [
+                new AuthenticationToken { Name = SessionTokens.AccessTokenName, Value = "token-spy" },
+            ]);
+            return _ticketFormat.Protect(new AuthenticationTicket(new ClaimsPrincipal(identity), properties,
+                CookieAuthenticationDefaults.AuthenticationScheme));
+        }
+    }
+
     [Fact]
     public async Task Anonymous_SessionEndpoint_Returns401_NotLoginRedirect()
     {
@@ -80,6 +157,28 @@ public class RouteGuardTests
 
         // 受保护前缀兜底 + 授权：匿名先被拦（401），绝不能落到 SPA 回退返回 200 + index.html。
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Authenticated_ProxyEscapesRouteValues_InUpstreamPath()
+    {
+        using var factory = new ProxySpyFactory();
+        using var client = factory.CreateClient();
+        // 真实 Cookie 会话票据（测试格式器直签）：代理从票据取 AT 才会真正发出上游请求。
+        client.DefaultRequestHeaders.Add("Cookie", "PandaAuth.Admin=" + factory.MintSessionCookie());
+
+        // 路由值含 / ? .. 等保留字符（%2F/%3F 不拆段，路由值解码回原样）：
+        // BFF 必须整体转义后再拼上游路径，否则 ?x=1 漏进上游 query、.. 被当作路径段导航。
+        using var response = await client.GetAsync("/admin/api/users/u%2F1%3Fx%3D1%2F..%2Fevil/claims");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var upstream = Assert.Single(factory.Spy.Requests);
+        Assert.EndsWith(
+            "/admin-api/claims/users/u%2F1%3Fx%3D1%2F..%2Fevil",
+            upstream.AbsolutePath,
+            StringComparison.Ordinal);
+        // 原路由值里的 ?x=1 不得在上游以 query 形态出现——整段保持转义后的单一路径段。
+        Assert.Equal(string.Empty, upstream.Query);
     }
 
     [Fact]

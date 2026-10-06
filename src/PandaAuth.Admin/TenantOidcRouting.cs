@@ -10,8 +10,8 @@ public static class TenantOidcRouting
         if (!TenantHostContext.LooksLikeTenantHost(host))
             return platformIssuer;
 
-        var suffix = ".auth.pandalabs.cn";
-        var prefix = host[..^suffix.Length];
+        // 后缀常量与主机判定同源（TenantHostContext）：两处各写一份字面量迟早漂移。
+        var prefix = host[..^TenantHostContext.TenantHostSuffix.Length];
         TenantId.Parse(prefix);
         return new Uri($"{request.Scheme}://{host}/");
     }
