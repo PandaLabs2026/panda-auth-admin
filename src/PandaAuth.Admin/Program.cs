@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Client;
 using OpenIddict.Client.AspNetCore;
 using PandaAuth.Shared;
@@ -26,7 +27,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     TenantForwardedHeaders.Configure(options, builder.Configuration);
 });
 
-builder.Services.AddAntiforgery(options => options.HeaderName = "X-XSRF-Token");
+// 防伪 Cookie 恒 Secure（生产），与下方会话 Cookie 的 Always 约束一致：防伪令牌不落明文。
+// 但 Antiforgery 对 Always 是服务端 fail-closed——非 SSL 请求直接抛 InvalidOperationException
+//（DefaultAntiforgery.CheckSSLConfig），/admin/api/antiforgery 与 /admin/api/logout 都会 500，
+// 后者的抛出不在 AntiforgeryValidationException 的 catch 内。浏览器对 localhost http 固然接受
+// Secure cookie，中间件不等浏览器：本地开发是 launchSettings 直连 http://localhost:9006（无 TLS），
+// 无条件 Always 会打断登出链路，故仅非 Development 环境收紧；生产容器为
+// ASPNETCORE_ENVIRONMENT=Production，且经 Caddy TLS 反代（X-Forwarded-Proto 还原 https）。
+// 行为由 AntiforgeryCookieSecurePolicyTests 钉住。
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-XSRF-Token";
+    if (!builder.Environment.IsDevelopment())
+    {
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    }
+});
 builder.Services
     .AddAuthentication(options =>
     {
@@ -91,6 +107,16 @@ if (builder.Environment.IsProduction())
     }
 }
 
+// OpenIddict 客户端加密/签名密钥（保护在途登录 state）：DP 路径已配置则同目录 load-or-create
+// client-keys.json——重启后旧 state 仍可完成回调，不再无声作废；开发（未配置 DP 路径）维持
+// ephemeral（进程内临时材料），app.Logger 启动告警一次。
+EncryptingCredentials? clientEncryptionCredentials = null;
+SigningCredentials? clientSigningCredentials = null;
+if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
+{
+    (clientEncryptionCredentials, clientSigningCredentials) = ClientKeys.LoadOrCreate(dataProtectionKeyPath);
+}
+
 // IDP 侧取值集中取出：OpenIddict 客户端注册与登出撤销客户端共用同一组配置，避免两份事实源。
 var issuer = new Uri(builder.Configuration["Auth:Issuer"] ?? "http://localhost:9004/");
 var clientId = builder.Configuration["Auth:ClientId"] ?? "admin-web";
@@ -110,6 +136,9 @@ builder.Services.AddTokenRevocation(builder.Configuration, new TokenRevocationOp
 // IDP 侧另有 Bearer + admin 角色门禁，双保险。
 var idpInternalBase = builder.Configuration["Auth:IdpInternalBaseAddress"] ?? "http://127.0.0.1:9004/";
 builder.Services.AddHttpContextAccessor();
+// 会话刷新接缝：生产实现包装 OpenIddict 客户端；单测经该接口桩刷新链路
+//（OpenIddictClientService 的刷新方法非虚，具体类无法继承重写）。
+builder.Services.AddSingleton<IAdminSessionRefresher, OpenIddictAdminSessionRefresher>();
 builder.Services.AddHttpClient<AdminApiProxy>(client =>
 {
     client.BaseAddress = new Uri(idpInternalBase);
@@ -127,8 +156,19 @@ builder.Services.AddOpenIddict()
         // 不使用 OpenIddict 的服务端令牌存储，故无需注册 OpenIddict core 服务（与 me 同款理由）。
         options.DisableTokenStorage();
 
-        options.AddEphemeralEncryptionKey();
-        options.AddEphemeralSigningKey();
+        // 客户端令牌保护密钥：持久化材料可用则注册之（重启不丢在途登录 state）；
+        // 开发形态退回 ephemeral——临时材料随进程消亡，重启即作废全部在途授权。
+        if (clientEncryptionCredentials is { } encryption && clientSigningCredentials is { } signing)
+        {
+            options.AddEncryptionCredentials(encryption);
+            options.AddSigningCredentials(signing);
+        }
+        else
+        {
+            options.AddEphemeralEncryptionKey();
+            options.AddEphemeralSigningKey();
+        }
+
         options.UseSystemNetHttp();
         options.UseAspNetCore()
             .EnableRedirectionEndpointPassthrough()
@@ -151,7 +191,9 @@ builder.Services.AddOpenIddict()
                 Scopes.Roles,
                 Scopes.OfflineAccess,
             },
-            // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）；生产值由 compose 注入。
+            // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）。
+            // 相对 URI 按请求的 host/scheme 解析，开发与生产同值可用；此处为硬编码，
+            // 不存在按环境注入的通路（appsettings 的 Auth:RedirectUri 等键已随本改动删除）。
             RedirectUri = new Uri("admin/callback/login/pandaauth", UriKind.Relative),
             // post-logout 回调必须是专用路径：/admin/ 本身会被 OpenIddict 客户端拦截做登出回调提取，
 // 无参数导航也被当作无 state 回调以 400 拒绝；且 IDP 种子登记的本来就是专用路径，
@@ -203,6 +245,26 @@ builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
+if (clientEncryptionCredentials is null)
+{
+    // 一次性启动告警：开发形态没配 Auth:DataProtectionKeyPath，客户端密钥是进程内临时材料。
+    // 这在本地无伤（重启重登即可），但若出现在生产（配置回归）意味着每次发版都把在途登录打回。
+    app.Logger.LogWarning("未配置 Auth:DataProtectionKeyPath：OpenIddict 客户端密钥为临时材料，重启将作废全部在途登录（应仅出现在开发环境）。");
+}
+
+// 全局异常兜底：管线内任何未处理异常统一折算为 ProblemDetails JSON——此前会落到裸 500
+// 纯文本，前端 apiSend 的 ProblemDetails 解析路径对它无从下手。异常本体由
+// ExceptionHandlerMiddleware 记日志，这里只回壳（title/detail 固定文案）：管理面响应
+// 不得外泄内部堆栈与路径细节。放在管线最前是为了罩住其后全部中间件与端点（含代理转发）；
+// SecurityHeaders 在进入后续管线前已写好响应头，错误响应同样带安全头。
+app.UseExceptionHandler(errorApp => errorApp.Run(async httpContext =>
+{
+    await Results.Problem(
+        statusCode: StatusCodes.Status500InternalServerError,
+        title: "服务器内部错误",
+        detail: "请求处理失败，请稍后重试。").ExecuteAsync(httpContext);
+}));
+
 // Legacy host-network runtime trusts loopback; tenant bridge runtime trusts only its exact Docker gateway.
 app.UseForwardedHeaders(app.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>().Value);
 
@@ -228,11 +290,33 @@ var antiforgery = app.Services.GetRequiredService<IAntiforgery>();
 
 // 登录挑战：全页导航入口（SPA 不经 XHR 调它；302 到 IDP 授权端点）。
 // 匿名是必需而非让步：登录入口本身不能要求已认证。returnUrl 经白名单校验防开放重定向。
-app.MapGet("/admin/login", (string? returnUrl) =>
-    Results.Challenge(new AuthenticationProperties
+// 带 error 查询参数（回调失败带回的 error 码）时不发起挑战，直接渲染极简错误页：
+// 否则系统性故障（IDP 宕机/授权被拒/凭据失效）下用户在 admin↔IDP 之间 302 打转
+// 直到触发限流 429，全程没有任何提示。这是 BFF 路由，天然先于 SPA 回退生效；
+// 错误码经 LoginError 白名单折算、文案全部出自固定映射，不回显 IDP 原文。
+app.MapGet("/admin/login", (string? returnUrl, string? error) =>
+{
+    if (!string.IsNullOrEmpty(error))
+    {
+        var sanitized = LoginReturnUrl.Sanitize(returnUrl);
+        // 重试链接保留已白名单化的 returnUrl（相对引用语义，消费点仍是本端点的 Sanitize）。
+        var retryHref = "/admin/login" + (sanitized == LoginReturnUrl.Fallback
+            ? string.Empty
+            : "?returnUrl=" + Uri.EscapeDataString(sanitized));
+        return Results.Content(
+            "<!doctype html><html lang=\"zh\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+            "<title>登录失败</title><body style=\"font-family:system-ui;padding:3rem;max-width:40rem\">" +
+            $"<h1 style=\"font-size:1.25rem\">登录失败</h1><p style=\"line-height:1.8\">{LoginError.Describe(error)}</p>" +
+            $"<p><a href=\"{retryHref}\">重试登录</a>　<a href=\"/admin/\">回到首页</a></p>" +
+            "</body></html>",
+            "text/html; charset=utf-8");
+    }
+
+    return Results.Challenge(new AuthenticationProperties
     {
         RedirectUri = LoginReturnUrl.Sanitize(returnUrl),
-    })).RequireRateLimiting("admin-login").AllowAnonymous();
+    });
+}).RequireRateLimiting("admin-login").AllowAnonymous();
 
 // OIDC 回调：OpenIddict 客户端完成授权码 + PKCE 校验后落到这里建立会话。
 // 匿名是必需的：回调发生在会话建立之前。
@@ -243,8 +327,20 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
     var result = await context.AuthenticateAsync(OpenIddictClientAspNetCoreDefaults.AuthenticationScheme);
     if (result is not { Succeeded: true } || result.Principal is null)
     {
-        // 认证失败（state 不符、码无效等）不渲染错误详情，回到登录入口重走挑战。
-        return Results.Redirect("/admin/login");
+        // 认证失败（IDP 拒绝授权、state 不符、码无效、令牌交换失败等）带回错误码重走挑战：
+        // 裸 302 回登录入口会丢掉 EnableErrorPassthrough 送到眼前的 error 码，系统性故障下
+        // 用户在 admin↔IDP 间打转直到限流 429，全程无提示。错误码来自失败结果的
+        // AuthenticationProperties（OpenIddict 把响应 error 写入 .error 项，含 IDP 透传与
+        // 本地校验失败两类）；error_description 等原文不透传——未约束输入不进重定向与页面。
+        var error = result.Properties?.Items[OpenIddictClientAspNetCoreConstants.Properties.Error]
+            ?? context.Request.Query["error"].ToString();
+        if (string.IsNullOrEmpty(error))
+        {
+            error = LoginError.StateInvalid;
+        }
+
+        logger.LogWarning("登录回调认证失败（error={Error}）。", LoginError.Normalize(error));
+        return Results.Redirect(LoginError.RedirectTarget(error));
     }
 
     var (identity, isAdmin) = AdminSessionIdentity.Build(result.Principal);
