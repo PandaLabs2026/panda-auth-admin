@@ -89,6 +89,9 @@ builder.Services.AddTokenRevocation(builder.Configuration, new TokenRevocationOp
 // IDP 侧另有 Bearer + admin 角色门禁，双保险。
 var idpInternalBase = builder.Configuration["Auth:IdpInternalBaseAddress"] ?? "http://127.0.0.1:9004/";
 builder.Services.AddHttpContextAccessor();
+// 会话刷新接缝：生产实现包装 OpenIddict 客户端；单测经该接口桩刷新链路
+//（OpenIddictClientService 的刷新方法非虚，具体类无法继承重写）。
+builder.Services.AddSingleton<IAdminSessionRefresher, OpenIddictAdminSessionRefresher>();
 builder.Services.AddHttpClient<AdminApiProxy>(client =>
 {
     client.BaseAddress = new Uri(idpInternalBase);
@@ -181,6 +184,19 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddHealthChecks();
 
 var app = builder.Build();
+
+// 全局异常兜底：管线内任何未处理异常统一折算为 ProblemDetails JSON——此前会落到裸 500
+// 纯文本，前端 apiSend 的 ProblemDetails 解析路径对它无从下手。异常本体由
+// ExceptionHandlerMiddleware 记日志，这里只回壳（title/detail 固定文案）：管理面响应
+// 不得外泄内部堆栈与路径细节。放在管线最前是为了罩住其后全部中间件与端点（含代理转发）；
+// SecurityHeaders 在进入后续管线前已写好响应头，错误响应同样带安全头。
+app.UseExceptionHandler(errorApp => errorApp.Run(async httpContext =>
+{
+    await Results.Problem(
+        statusCode: StatusCodes.Status500InternalServerError,
+        title: "服务器内部错误",
+        detail: "请求处理失败，请稍后重试。").ExecuteAsync(httpContext);
+}));
 
 // Legacy host-network runtime trusts loopback; tenant bridge runtime trusts only its exact Docker gateway.
 app.UseForwardedHeaders(app.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>().Value);
