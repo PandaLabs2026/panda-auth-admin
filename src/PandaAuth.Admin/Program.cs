@@ -244,6 +244,17 @@ builder.Services.AddAuthorization(options =>
 });
 builder.Services.AddHealthChecks();
 
+// 租户工作台门户入口（部署注入，如 https://t0000.s001.pandalabs.cn）：配置后管理台页眉显示
+// 「返回工作台」。信任级别与 Auth:Issuer 相同——来自受控部署环境而非用户输入；未配置或缺省时
+// /admin/api/session 返回 null，前端隐藏链接（各部署可独立采用，不阻断启动）；配置了但不是
+// 绝对 https URL 则启动失败——错误值比缺失更危险，宁可不启动也不下发坏链接。与 me 服务同键同语义。
+var portalHomeUrl = builder.Configuration["Auth:PortalHomeUrl"];
+if (!string.IsNullOrWhiteSpace(portalHomeUrl) &&
+    (!Uri.TryCreate(portalHomeUrl, UriKind.Absolute, out var portalHome) || portalHome.Scheme != Uri.UriSchemeHttps))
+{
+    throw new InvalidOperationException("Auth:PortalHomeUrl 配置了但不是绝对 https URL；请修正或移除该配置。");
+}
+
 var app = builder.Build();
 
 if (clientEncryptionCredentials is null)
@@ -432,6 +443,7 @@ app.MapGet("/admin/api/session", (HttpContext context) =>
         email = context.User.FindFirst(Claims.Email)?.Value,
         nickname = context.User.FindFirst(PandaAuthClaims.Nickname)?.Value,
         roles = context.User.FindAll(Claims.Role).Select(claim => claim.Value).ToArray(),
+        portalHomeUrl,
     });
 }).AllowAnonymous();
 
