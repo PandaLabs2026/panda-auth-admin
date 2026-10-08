@@ -10,11 +10,13 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
 using OpenIddict.Client;
 using OpenIddict.Client.AspNetCore;
 using PandaAuth.Shared;
 using PandaAuth.Admin;
 using PandaAuth.Admin.Infrastructure.Security;
+using HeaderNames = Microsoft.Net.Http.Headers.HeaderNames;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -26,7 +28,22 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     TenantForwardedHeaders.Configure(options, builder.Configuration);
 });
 
-builder.Services.AddAntiforgery(options => options.HeaderName = "X-XSRF-Token");
+// 防伪 Cookie 恒 Secure（生产），与下方会话 Cookie 的 Always 约束一致：防伪令牌不落明文。
+// 但 Antiforgery 对 Always 是服务端 fail-closed——非 SSL 请求直接抛 InvalidOperationException
+//（DefaultAntiforgery.CheckSSLConfig），/admin/api/antiforgery 与 /admin/api/logout 都会 500，
+// 后者的抛出不在 AntiforgeryValidationException 的 catch 内。浏览器对 localhost http 固然接受
+// Secure cookie，中间件不等浏览器：本地开发是 launchSettings 直连 http://localhost:9006（无 TLS），
+// 无条件 Always 会打断登出链路，故仅非 Development 环境收紧；生产容器为
+// ASPNETCORE_ENVIRONMENT=Production，且经 Caddy TLS 反代（X-Forwarded-Proto 还原 https）。
+// 行为由 AntiforgeryCookieSecurePolicyTests 钉住。
+builder.Services.AddAntiforgery(options =>
+{
+    options.HeaderName = "X-XSRF-Token";
+    if (!builder.Environment.IsDevelopment())
+    {
+        options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+    }
+});
 builder.Services
     .AddAuthentication(options =>
     {
@@ -70,6 +87,37 @@ if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
         .SetApplicationName("PandaAuth.Admin");
 }
 
+// 生产环境的 IDP 地址同样失败关闭：issuer/内网基址缺失**或仍是开发默认值**即拒绝启动。
+// 只查缺失并不够——镜像里烤着开发取值的 appsettings.json，绕过 compose 环境变量直跑容器时
+// 键永远「存在」，静默回退等于把公网流量指向开发地址、把配置事故变成运行期偶发故障。
+// compose 部署恒注入真实值（deploy/docker-compose.yml 以 ${AUTH_ISSUER:?} 强制），
+// 正常生产不受影响；开发环境保留回环默认，维持零配置启动。与下方 ClientSecret 同款哲学。
+// 位置必须在首个 new Uri(...) 之前：空值先在这里被拦下，否则 Uri 构造先炸出 UriFormatException。
+if (builder.Environment.IsProduction())
+{
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Auth:Issuer"])
+        || string.Equals(builder.Configuration["Auth:Issuer"]!.Trim(), "http://localhost:9004/", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Auth:Issuer 缺失或仍是开发默认值（生产不得使用 http://localhost:9004/，须由部署环境注入真实 issuer）。");
+    }
+
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Auth:IdpInternalBaseAddress"])
+        || string.Equals(builder.Configuration["Auth:IdpInternalBaseAddress"]!.Trim(), "http://127.0.0.1:9004/", StringComparison.OrdinalIgnoreCase))
+    {
+        throw new InvalidOperationException("Auth:IdpInternalBaseAddress 缺失或仍是开发默认值（生产须由部署环境注入代理上游地址）。");
+    }
+}
+
+// OpenIddict 客户端加密/签名密钥（保护在途登录 state）：DP 路径已配置则同目录 load-or-create
+// client-keys.json——重启后旧 state 仍可完成回调，不再无声作废；开发（未配置 DP 路径）维持
+// ephemeral（进程内临时材料），app.Logger 启动告警一次。
+EncryptingCredentials? clientEncryptionCredentials = null;
+SigningCredentials? clientSigningCredentials = null;
+if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
+{
+    (clientEncryptionCredentials, clientSigningCredentials) = ClientKeys.LoadOrCreate(dataProtectionKeyPath);
+}
+
 // IDP 侧取值集中取出：OpenIddict 客户端注册与登出撤销客户端共用同一组配置，避免两份事实源。
 var issuer = new Uri(builder.Configuration["Auth:Issuer"] ?? "http://localhost:9004/");
 var clientId = builder.Configuration["Auth:ClientId"] ?? "admin-web";
@@ -78,16 +126,6 @@ var clientSecret = builder.Configuration["Auth:ClientSecret"];
 if (string.IsNullOrWhiteSpace(clientSecret))
 {
     throw new InvalidOperationException("缺少 Auth:ClientSecret 配置（admin-web 为机密客户端，密钥须由部署环境注入）。");
-}
-
-// 租户工作台门户入口（部署注入，如 https://t0000.s001.pandalabs.cn）：配置后侧边栏显示
-// 「返回熊猫门户」。信任级别与 Auth:Issuer 相同——来自受控部署环境而非用户输入；未配置时
-// 前端隐藏链接（不阻断启动）；配置了但不是绝对 https URL 则启动失败（错误值比缺失更危险）。
-var portalHomeUrl = builder.Configuration["Auth:PortalHomeUrl"];
-if (!string.IsNullOrWhiteSpace(portalHomeUrl) &&
-    (!Uri.TryCreate(portalHomeUrl, UriKind.Absolute, out var portalHome) || portalHome.Scheme != Uri.UriSchemeHttps))
-{
-    throw new InvalidOperationException("Auth:PortalHomeUrl 配置了但不是绝对 https URL；请修正或移除该配置。");
 }
 
 // 登出撤销客户端。超时取值的读取与校验都在 AddTokenRevocation 内、启动期完成——
@@ -99,6 +137,9 @@ builder.Services.AddTokenRevocation(builder.Configuration, new TokenRevocationOp
 // IDP 侧另有 Bearer + admin 角色门禁，双保险。
 var idpInternalBase = builder.Configuration["Auth:IdpInternalBaseAddress"] ?? "http://127.0.0.1:9004/";
 builder.Services.AddHttpContextAccessor();
+// 会话刷新接缝：生产实现包装 OpenIddict 客户端；单测经该接口桩刷新链路
+//（OpenIddictClientService 的刷新方法非虚，具体类无法继承重写）。
+builder.Services.AddSingleton<IAdminSessionRefresher, OpenIddictAdminSessionRefresher>();
 builder.Services.AddHttpClient<AdminApiProxy>(client =>
 {
     client.BaseAddress = new Uri(idpInternalBase);
@@ -116,8 +157,19 @@ builder.Services.AddOpenIddict()
         // 不使用 OpenIddict 的服务端令牌存储，故无需注册 OpenIddict core 服务（与 me 同款理由）。
         options.DisableTokenStorage();
 
-        options.AddEphemeralEncryptionKey();
-        options.AddEphemeralSigningKey();
+        // 客户端令牌保护密钥：持久化材料可用则注册之（重启不丢在途登录 state）；
+        // 开发形态退回 ephemeral——临时材料随进程消亡，重启即作废全部在途授权。
+        if (clientEncryptionCredentials is { } encryption && clientSigningCredentials is { } signing)
+        {
+            options.AddEncryptionCredentials(encryption);
+            options.AddSigningCredentials(signing);
+        }
+        else
+        {
+            options.AddEphemeralEncryptionKey();
+            options.AddEphemeralSigningKey();
+        }
+
         options.UseSystemNetHttp();
         options.UseAspNetCore()
             .EnableRedirectionEndpointPassthrough()
@@ -140,7 +192,9 @@ builder.Services.AddOpenIddict()
                 Scopes.Roles,
                 Scopes.OfflineAccess,
             },
-            // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）；生产值由 compose 注入。
+            // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）。
+            // 相对 URI 按请求的 host/scheme 解析，开发与生产同值可用；此处为硬编码，
+            // 不存在按环境注入的通路（appsettings 的 Auth:RedirectUri 等键已随本改动删除）。
             RedirectUri = new Uri("admin/callback/login/pandaauth", UriKind.Relative),
             // post-logout 回调必须是专用路径：/admin/ 本身会被 OpenIddict 客户端拦截做登出回调提取，
 // 无参数导航也被当作无 state 回调以 400 拒绝；且 IDP 种子登记的本来就是专用路径，
@@ -192,6 +246,26 @@ builder.Services.AddHealthChecks();
 
 var app = builder.Build();
 
+if (clientEncryptionCredentials is null)
+{
+    // 一次性启动告警：开发形态没配 Auth:DataProtectionKeyPath，客户端密钥是进程内临时材料。
+    // 这在本地无伤（重启重登即可），但若出现在生产（配置回归）意味着每次发版都把在途登录打回。
+    app.Logger.LogWarning("未配置 Auth:DataProtectionKeyPath：OpenIddict 客户端密钥为临时材料，重启将作废全部在途登录（应仅出现在开发环境）。");
+}
+
+// 全局异常兜底：管线内任何未处理异常统一折算为 ProblemDetails JSON——此前会落到裸 500
+// 纯文本，前端 apiSend 的 ProblemDetails 解析路径对它无从下手。异常本体由
+// ExceptionHandlerMiddleware 记日志，这里只回壳（title/detail 固定文案）：管理面响应
+// 不得外泄内部堆栈与路径细节。放在管线最前是为了罩住其后全部中间件与端点（含代理转发）；
+// SecurityHeaders 在进入后续管线前已写好响应头，错误响应同样带安全头。
+app.UseExceptionHandler(errorApp => errorApp.Run(async httpContext =>
+{
+    await Results.Problem(
+        statusCode: StatusCodes.Status500InternalServerError,
+        title: "服务器内部错误",
+        detail: "请求处理失败，请稍后重试。").ExecuteAsync(httpContext);
+}));
+
 // Legacy host-network runtime trusts loopback; tenant bridge runtime trusts only its exact Docker gateway.
 app.UseForwardedHeaders(app.Services.GetRequiredService<IOptions<ForwardedHeadersOptions>>().Value);
 
@@ -217,11 +291,33 @@ var antiforgery = app.Services.GetRequiredService<IAntiforgery>();
 
 // 登录挑战：全页导航入口（SPA 不经 XHR 调它；302 到 IDP 授权端点）。
 // 匿名是必需而非让步：登录入口本身不能要求已认证。returnUrl 经白名单校验防开放重定向。
-app.MapGet("/admin/login", (string? returnUrl) =>
-    Results.Challenge(new AuthenticationProperties
+// 带 error 查询参数（回调失败带回的 error 码）时不发起挑战，直接渲染极简错误页：
+// 否则系统性故障（IDP 宕机/授权被拒/凭据失效）下用户在 admin↔IDP 之间 302 打转
+// 直到触发限流 429，全程没有任何提示。这是 BFF 路由，天然先于 SPA 回退生效；
+// 错误码经 LoginError 白名单折算、文案全部出自固定映射，不回显 IDP 原文。
+app.MapGet("/admin/login", (string? returnUrl, string? error) =>
+{
+    if (!string.IsNullOrEmpty(error))
+    {
+        var sanitized = LoginReturnUrl.Sanitize(returnUrl);
+        // 重试链接保留已白名单化的 returnUrl（相对引用语义，消费点仍是本端点的 Sanitize）。
+        var retryHref = "/admin/login" + (sanitized == LoginReturnUrl.Fallback
+            ? string.Empty
+            : "?returnUrl=" + Uri.EscapeDataString(sanitized));
+        return Results.Content(
+            "<!doctype html><html lang=\"zh\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+            "<title>登录失败</title><body style=\"font-family:system-ui;padding:3rem;max-width:40rem\">" +
+            $"<h1 style=\"font-size:1.25rem\">登录失败</h1><p style=\"line-height:1.8\">{LoginError.Describe(error)}</p>" +
+            $"<p><a href=\"{retryHref}\">重试登录</a>　<a href=\"/admin/\">回到首页</a></p>" +
+            "</body></html>",
+            "text/html; charset=utf-8");
+    }
+
+    return Results.Challenge(new AuthenticationProperties
     {
         RedirectUri = LoginReturnUrl.Sanitize(returnUrl),
-    })).RequireRateLimiting("admin-login").AllowAnonymous();
+    });
+}).RequireRateLimiting("admin-login").AllowAnonymous();
 
 // OIDC 回调：OpenIddict 客户端完成授权码 + PKCE 校验后落到这里建立会话。
 // 匿名是必需的：回调发生在会话建立之前。
@@ -232,8 +328,20 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
     var result = await context.AuthenticateAsync(OpenIddictClientAspNetCoreDefaults.AuthenticationScheme);
     if (result is not { Succeeded: true } || result.Principal is null)
     {
-        // 认证失败（state 不符、码无效等）不渲染错误详情，回到登录入口重走挑战。
-        return Results.Redirect("/admin/login");
+        // 认证失败（IDP 拒绝授权、state 不符、码无效、令牌交换失败等）带回错误码重走挑战：
+        // 裸 302 回登录入口会丢掉 EnableErrorPassthrough 送到眼前的 error 码，系统性故障下
+        // 用户在 admin↔IDP 间打转直到限流 429，全程无提示。错误码来自失败结果的
+        // AuthenticationProperties（OpenIddict 把响应 error 写入 .error 项，含 IDP 透传与
+        // 本地校验失败两类）；error_description 等原文不透传——未约束输入不进重定向与页面。
+        var error = result.Properties?.Items[OpenIddictClientAspNetCoreConstants.Properties.Error]
+            ?? context.Request.Query["error"].ToString();
+        if (string.IsNullOrEmpty(error))
+        {
+            error = LoginError.StateInvalid;
+        }
+
+        logger.LogWarning("登录回调认证失败（error={Error}）。", LoginError.Normalize(error));
+        return Results.Redirect(LoginError.RedirectTarget(error));
     }
 
     var (identity, isAdmin) = AdminSessionIdentity.Build(result.Principal);
@@ -273,7 +381,8 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
     // refresh_token 键名恰好一致可直接取。会话票据内部仍用 SessionTokens 常量存储（自持命名，
     // 下游 proxy / 登出撤销的读取不变）。
     var resultProperties = result.Properties!;
-    logger.LogInformation(
+    // 诊断日志降 Debug：回调属高频路径，Information 级在常态流量下只有刷屏价值。
+    logger.LogDebug(
         "回调诊断：AT={HasAt} RT={HasRt}",
         resultProperties.GetTokenValue("backchannel_access_token") is not null,
         resultProperties.GetTokenValue(SessionTokens.RefreshTokenName) is not null);
@@ -323,52 +432,69 @@ app.MapGet("/admin/api/session", (HttpContext context) =>
         email = context.User.FindFirst(Claims.Email)?.Value,
         nickname = context.User.FindFirst(PandaAuthClaims.Nickname)?.Value,
         roles = context.User.FindAll(Claims.Role).Select(claim => claim.Value).ToArray(),
-        portalHomeUrl,
     });
 }).AllowAnonymous();
 
-// 登出：防伪校验 → 撤销 IDP 令牌（尽力而为）→ 清本地会话 → RP 端到端登出（end-session）。
-// 不匿名豁免：登出只对已登录会话有意义；匿名 POST 由 FallbackPolicy 拦下（302，前端仅在有会话时调用）。
-app.MapPost("/admin/api/logout", async (HttpContext context, TokenRevocationClient revocationClient) =>
+// 路由值的归一化还原：ASP.NET 路由对路由值做**部分**解码（%3F→? 等还原，但 %2F 保留转义
+// 以维持路径段语义）。此处只负责 UnescapeDataString 还原成**原始 id**——统一转义由
+// share 契约（PandaAuthAdminApi）负责，server/admin 两端共引一处；调用方若再自行
+// EscapeDataString 会把 % 二次转义成 %25（配套 share PR：fix/admin-api-path-escaping）。
+static string NormalizeRouteValue(string value) => Uri.UnescapeDataString(value);
+
+// 变更类端点的防伪样板收敛：此前逐端点抄 try/catch（加端点 = 再抄一段，漏抄一段 = 该端点
+// CSRF 裸奔）。端点只声明业务转发参数；防伪失败统一 400，行为与收敛前一致。
+async Task<IResult> WithAntiforgeryAsync(HttpContext ctx, Func<Task<IResult>> handler)
 {
     try
     {
-        await antiforgery.ValidateRequestAsync(context);
+        await antiforgery.ValidateRequestAsync(ctx);
     }
     catch (AntiforgeryValidationException)
     {
         return Results.BadRequest();
     }
 
-    // 先取令牌再登出：Cookie 清除后票据内的令牌不可恢复。
-    var (accessToken, refreshToken) = SessionTokens.Read(
-        await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme));
+    return await handler();
+}
 
-    await revocationClient.RevokeAsync(
-        accessToken,
-        refreshToken,
-        context.RequestAborted,
-        TenantOidcRouting.ResolveIssuer(context.Request, issuer));
-    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+// 登出：防伪校验 → 撤销 IDP 令牌（尽力而为）→ 清本地会话 → RP 端到端登出（end-session）。
+// 不匿名豁免：登出只对已登录会话有意义；匿名 POST 由 FallbackPolicy 拦下（302，前端仅在有会话时调用）。
+app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient revocationClient) =>
+    WithAntiforgeryAsync(context, async () =>
+    {
+        // 先取令牌再登出：Cookie 清除后票据内的令牌不可恢复。
+        var (accessToken, refreshToken) = SessionTokens.Read(
+            await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme));
 
-    // RP 端到端登出：显式 302 到 IDP 的 end-session 端点（client-id-no-hint 公共登出路径，
-    // post_logout_redirect_uri 已在 admin-web 注册），确保 IDP SSO 会话一并终止后经
-    // /admin/callback/logout/pandaauth 回到登录页。若仅清本地 Cookie，存活的 IDP 会话会在
-    // 下一次 challenge 时把用户静默签回——表现为「退出无效」。
-    var endSession = new Uri(issuer, "connect/logout?client_id=" + Uri.EscapeDataString(clientId) +
-        "&post_logout_redirect_uri=" + Uri.EscapeDataString(new Uri(issuer, "admin/callback/logout/pandaauth").AbsoluteUri));
-    return Results.Redirect(endSession.AbsoluteUri);
-});
+        await revocationClient.RevokeAsync(
+            accessToken,
+            refreshToken,
+            context.RequestAborted,
+            TenantOidcRouting.ResolveIssuer(context.Request, issuer));
+        await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
-// 登出后的落地端点：IDP end-session 完成后回到管理台登录页（匿名豁免——登录页本就匿名可达）。
-app.MapGet("/admin/callback/logout/pandaauth", () => Results.Redirect("/admin/login")).AllowAnonymous();
+        // RP 发起的前端登出：重定向到 IDP 的 end-session 端点（单点登出），再回 PostLogoutRedirectUri。
+        return Results.SignOut(
+            new AuthenticationProperties { RedirectUri = "/admin/" },
+            [OpenIddictClientAspNetCoreDefaults.AuthenticationScheme]);
+    }));
 
 // ---- Admin 数据 API 代理端点（admin 0.3）----
-// 全部落在 FallbackPolicy 下（需已认证）；变更类（POST/PUT）先验防伪再转发 JSON 体；
+// 全部落在 FallbackPolicy 下（需已认证）；变更类（POST/PUT/DELETE）经 WithAntiforgeryAsync；
 // GET 透传查询串。上游路径取自 share 契约常量（PandaAuthAdminApi），两端不写 URL 字面量。
+// 路由值一律经 NormalizeRouteValue（见上）还原为原始 id 后交给契约——统一转义在契约侧完成，
+// 直拼（不还原）即把调用方可控内容注入上游 query/路径段（? 与 .. 皆然）。
 async Task<string?> ReadJsonBodyAsync(HttpContext ctx)
 {
-    if (ctx.Request.ContentLength is null or 0)
+    // Content-Length 为 null 不等于「没有体」：chunked（Transfer-Encoding）请求没有
+    // Content-Length，此前被静默当空体，变更请求被无声丢弃、上游按无体处理。
+    // 真没有体 = 长度 0，或既无长度也无 Transfer-Encoding。
+    if (ctx.Request.ContentLength is 0)
+    {
+        return null;
+    }
+
+    if (ctx.Request.ContentLength is null && !ctx.Request.Headers.ContainsKey(HeaderNames.TransferEncoding))
     {
         return null;
     }
@@ -381,52 +507,19 @@ app.MapGet("/admin/api/users", (HttpContext ctx, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.Users + ctx.Request.QueryString.Value, HttpMethod.Get));
 
 app.MapGet("/admin/api/users/{id}", (string id, AdminApiProxy proxy)
-    => proxy.ForwardAsync(PandaAuthAdminApi.User(id), HttpMethod.Get));
+    => proxy.ForwardAsync(PandaAuthAdminApi.User(NormalizeRouteValue(id)), HttpMethod.Get));
 
-app.MapPost("/admin/api/users/{id}/status", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
+app.MapPost("/admin/api/users/{id}/status", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserStatus(NormalizeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
-    return await proxy.ForwardAsync(PandaAuthAdminApi.UserStatus(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
-});
+app.MapPost("/admin/api/users/{id}/reset-password", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserResetPassword(NormalizeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
-app.MapPost("/admin/api/users/{id}/reset-password", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
-
-    return await proxy.ForwardAsync(PandaAuthAdminApi.UserResetPassword(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
-});
-
-app.MapPost("/admin/api/users", async (HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
-
-    return await proxy.ForwardAsync(PandaAuthAdminApi.Users, HttpMethod.Post, await ReadJsonBodyAsync(ctx));
-});
+app.MapPost("/admin/api/users", (HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.Users, HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
 app.MapGet("/admin/api/users/{id}/claims", (string id, AdminApiProxy proxy)
-    => proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(id), HttpMethod.Get));
+    => proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(NormalizeRouteValue(id)), HttpMethod.Get));
 
 app.MapGet("/admin/api/roles", async (HttpContext context, AdminApiProxy proxy) =>
 {
@@ -434,134 +527,35 @@ app.MapGet("/admin/api/roles", async (HttpContext context, AdminApiProxy proxy) 
     return await proxy.ForwardAsync(PandaAuthAdminApi.Roles + query, HttpMethod.Get);
 });
 
-app.MapPost("/admin/api/users/{id}/claims", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
+app.MapPost("/admin/api/users/{id}/claims", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(NormalizeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
-    return await proxy.ForwardAsync(PandaAuthAdminApi.UserClaims(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
-});
-
-app.MapDelete("/admin/api/users/{id}/claims/{claimId:long}", async (string id, long claimId, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
-
-    return await proxy.ForwardAsync(PandaAuthAdminApi.UserClaim(id, claimId), HttpMethod.Delete);
-});
+app.MapDelete("/admin/api/users/{id}/claims/{claimId:long}", (string id, long claimId, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserClaim(NormalizeRouteValue(id), claimId), HttpMethod.Delete)));
 
 app.MapGet("/admin/api/roles/{id}/claims", (string id, AdminApiProxy proxy)
-    => proxy.ForwardAsync(PandaAuthAdminApi.RoleClaims(id), HttpMethod.Get));
+    => proxy.ForwardAsync(PandaAuthAdminApi.RoleClaims(NormalizeRouteValue(id)), HttpMethod.Get));
 
-app.MapPost("/admin/api/roles/{id}/claims", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
+app.MapPost("/admin/api/roles/{id}/claims", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.RoleClaims(NormalizeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
-    return await proxy.ForwardAsync(PandaAuthAdminApi.RoleClaims(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
-});
+app.MapDelete("/admin/api/roles/{id}/claims/{claimId:long}", (string id, long claimId, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.RoleClaim(NormalizeRouteValue(id), claimId), HttpMethod.Delete)));
 
-app.MapDelete("/admin/api/roles/{id}/claims/{claimId:long}", async (string id, long claimId, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
+app.MapPut("/admin/api/users/{id}/roles", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserRoles(NormalizeRouteValue(id)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
 
-    return await proxy.ForwardAsync(PandaAuthAdminApi.RoleClaim(id, claimId), HttpMethod.Delete);
-});
+app.MapPost("/admin/api/users/{id}/unlock", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserUnlock(NormalizeRouteValue(id)), HttpMethod.Post)));
 
-app.MapPut("/admin/api/users/{id}/roles", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
+app.MapPut("/admin/api/users/{id}/profile", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(NormalizeRouteValue(id)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
 
-    return await proxy.ForwardAsync(PandaAuthAdminApi.UserRoles(id), HttpMethod.Put, await ReadJsonBodyAsync(ctx));
-});
+app.MapPost("/admin/api/users/{id}/reset-2fa", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserResetTwoFactor(NormalizeRouteValue(id)), HttpMethod.Post)));
 
-app.MapPost("/admin/api/users/{id}/unlock", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
-
-    return await proxy.ForwardAsync(PandaAuthAdminApi.UserUnlock(id), HttpMethod.Post);
-});
-
-app.MapPut("/admin/api/users/{id}/profile", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
-
-    return await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(id), HttpMethod.Put, await ReadJsonBodyAsync(ctx));
-});
-
-app.MapPost("/admin/api/users/{id}/reset-2fa", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
-
-    return await proxy.ForwardAsync(PandaAuthAdminApi.UserResetTwoFactor(id), HttpMethod.Post);
-});
-
-app.MapPost("/admin/api/users/{id}/deactivate", async (string id, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
-
-    return await proxy.ForwardAsync(PandaAuthAdminApi.UserDeactivate(id), HttpMethod.Post, await ReadJsonBodyAsync(ctx));
-});
+app.MapPost("/admin/api/users/{id}/deactivate", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserDeactivate(NormalizeRouteValue(id)), HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
 
 app.MapGet("/admin/api/clients", (HttpContext ctx, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.Clients + ctx.Request.QueryString.Value, HttpMethod.Get));
@@ -570,49 +564,16 @@ app.MapGet("/admin/api/clients/options", (AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.ClientOptions, HttpMethod.Get));
 
 app.MapGet("/admin/api/clients/{clientId}", (string clientId, AdminApiProxy proxy)
-    => proxy.ForwardAsync(PandaAuthAdminApi.Client(clientId), HttpMethod.Get));
+    => proxy.ForwardAsync(PandaAuthAdminApi.Client(NormalizeRouteValue(clientId)), HttpMethod.Get));
 
-app.MapPut("/admin/api/clients/{clientId}/redirect-uris", async (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
+app.MapPut("/admin/api/clients/{clientId}/redirect-uris", (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.ClientRedirectUris(NormalizeRouteValue(clientId)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
 
-    return await proxy.ForwardAsync(PandaAuthAdminApi.ClientRedirectUris(clientId), HttpMethod.Put, await ReadJsonBodyAsync(ctx));
-});
+app.MapPut("/admin/api/clients/{clientId}/permissions", (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.ClientPermissions(NormalizeRouteValue(clientId)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
 
-app.MapPut("/admin/api/clients/{clientId}/permissions", async (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
-
-    return await proxy.ForwardAsync(PandaAuthAdminApi.ClientPermissions(clientId), HttpMethod.Put, await ReadJsonBodyAsync(ctx));
-});
-
-app.MapPost("/admin/api/clients/{clientId}/rotate-secret", async (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
-{
-    try
-    {
-        await antiforgery.ValidateRequestAsync(ctx);
-    }
-    catch (AntiforgeryValidationException)
-    {
-        return Results.BadRequest();
-    }
-
-    return await proxy.ForwardAsync(PandaAuthAdminApi.ClientRotateSecret(clientId), HttpMethod.Post);
-});
+app.MapPost("/admin/api/clients/{clientId}/rotate-secret", (string clientId, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.ClientRotateSecret(NormalizeRouteValue(clientId)), HttpMethod.Post)));
 
 app.MapGet("/admin/api/audit/logins", (HttpContext ctx, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.AuditLogins + ctx.Request.QueryString.Value, HttpMethod.Get));
@@ -647,11 +608,7 @@ foreach (var prefix in BffRoutes.ProtectedPrefixes)
 // 注意放行的是**外壳**，不是数据——页面能加载不代表能拿到管理 API 的任何响应。
 // 路由优先级：/admin/api/* 由上面那条更具体的回退接管（字面量段 api 胜过 catch-all），
 // 与本行的注册先后无关。
-// SPA 入口 no-store：部署轮换后浏览器不得沿用旧前端（带哈希的静态资源仍可长缓存）。
-app.MapFallbackToFile("/admin/{*path:nonfile}", "admin/index.html", new Microsoft.AspNetCore.Builder.StaticFileOptions
-{
-    OnPrepareResponse = ctx => ctx.Context.Response.Headers.CacheControl = "no-store"
-}).AllowAnonymous();
+app.MapFallbackToFile("/admin/{*path:nonfile}", "admin/index.html").AllowAnonymous();
 
 app.Run();
 

@@ -1,7 +1,12 @@
 /**
  * BFF API 客户端：GET 直取；变更类先取防伪令牌（与 Cookie 成对校验）再发。
  * 401 统一折算为全页跳登录（会话过期/令牌被吊销/角色丢失），页面层无需各自处理。
+ * 403 语义二分：只有 BFF 探测到上游 MFA 门禁标记（X-Panda-Mfa-Required）才跳 step-up，
+ * 其余 403 是真正的权限拒绝，随一般错误路径展示，不再误导用户去 /account/mfa。
  */
+
+/** MFA 门禁标记响应头：BFF 代理在上游 403 响应体带 mfaRequired 标记时附加（见 AdminApiProxy）。 */
+const MFA_REQUIRED_HEADER = "X-Panda-Mfa-Required"
 
 async function fetchAntiforgeryToken(): Promise<string> {
   const response = await fetch("/admin/api/antiforgery", { headers: { "X-Requested-With": "XMLHttpRequest" } })
@@ -17,11 +22,21 @@ function unauthorized(): never {
   throw new Error("unauthorized")
 }
 
-/** 管理 API 的 403 在 BFF 角色门禁已建立后表示 MFA 不满足；到 IDP 完成 step-up 再回原操作。 */
+/** 上游 MFA 门禁命中（403 + 标记头）才跳 step-up；到 IDP 完成验证后回原操作。 */
 function mfaRequired(): never {
   const returnUrl = encodeURIComponent(window.location.pathname + window.location.search)
   window.location.assign(`/account/mfa?returnUrl=${returnUrl}`)
   throw new Error("mfa_required")
+}
+
+/** 会话契约（/admin/api/session）：顶栏与概览共用，勿在页面里另抄一份。 */
+export type Session = {
+  subject: string
+  name: string | null
+  email: string | null
+  nickname: string | null
+  roles: string[]
+  portalHomeUrl: string | null
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
@@ -47,7 +62,7 @@ export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   if (response.status === 401) unauthorized()
-  if (response.status === 403) mfaRequired()
+  if (response.status === 403 && response.headers.get(MFA_REQUIRED_HEADER) === "true") mfaRequired()
   if (!response.ok) {
     let detail = `HTTP ${response.status}`
     try {

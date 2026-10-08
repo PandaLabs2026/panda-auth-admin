@@ -88,7 +88,11 @@ export default function UsersPage() {
     void load()
   }, [load])
 
+  // 详情与列表同款乱序守卫：连续点击两行时，慢的旧详情可能后到并覆盖新选中的详情。
+  const detailSeq = useRef(0)
+
   async function openDetail(id: string) {
+    const seq = ++detailSeq.current
     try {
       setNewPassword(null)
       setEditingProfile(false)
@@ -96,10 +100,11 @@ export default function UsersPage() {
         apiGet<UserDetail>(`/admin/api/users/${id}`),
         apiGet<UserClaim[]>(`/admin/api/users/${id}/claims`),
       ])
+      if (seq !== detailSeq.current) return
       setDetail(user)
       setClaims(userClaims)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "详情加载失败")
+      if (seq === detailSeq.current) setError(cause instanceof Error ? cause.message : "详情加载失败")
     }
   }
 

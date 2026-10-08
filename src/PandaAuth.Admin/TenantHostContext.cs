@@ -6,7 +6,11 @@ namespace PandaAuth.Admin;
 /// <summary>校验 PandaAuth Admin 当前请求主机与会话中的租户声明是否一致。</summary>
 public static class TenantHostContext
 {
-    private const string PlatformHost = "auth.pandalabs.cn";
+    /// <summary>平台公网主域：主机判定（本类）与租户 issuer 路由（TenantOidcRouting）共引此一处。</summary>
+    public const string PlatformHost = "auth.pandalabs.cn";
+
+    /// <summary>租户入口后缀（t#### + 平台主域）；常量拼接保持 const，两处判定同源不漂移。</summary>
+    public const string TenantHostSuffix = "." + PlatformHost;
 
     public static bool TryValidate(HttpContext context, ClaimsPrincipal principal, out string? reason)
     {
@@ -47,11 +51,10 @@ public static class TenantHostContext
     private static bool TryParseTenantHost(string host, out TenantId tenantId)
     {
         tenantId = default;
-        const string suffix = ".auth.pandalabs.cn";
-        if (!host.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+        if (!host.EndsWith(TenantHostSuffix, StringComparison.OrdinalIgnoreCase))
             return false;
 
-        var prefix = host[..^suffix.Length];
+        var prefix = host[..^TenantHostSuffix.Length];
         try
         {
             tenantId = TenantId.Parse(prefix);
@@ -64,8 +67,8 @@ public static class TenantHostContext
     }
 
     public static bool LooksLikeTenantHost(string host) =>
-        host.EndsWith(".auth.pandalabs.cn", StringComparison.OrdinalIgnoreCase) &&
-        host.Length > ".auth.pandalabs.cn".Length;
+        host.EndsWith(TenantHostSuffix, StringComparison.OrdinalIgnoreCase) &&
+        host.Length > TenantHostSuffix.Length;
 }
 
 /// <summary>已登录请求的租户主机边界；平台主机保留平台管理员兼容行为。</summary>

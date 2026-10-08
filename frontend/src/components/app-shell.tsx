@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
-import { apiGet } from "@/lib/api"
+import { apiGet, type Session } from "@/lib/api"
 
 import { Button } from "@/components/ui/button"
 
@@ -23,18 +23,27 @@ const TITLES: Record<string, string> = {
 
 /**
  * 登出：先取防伪令牌（`GET /admin/api/antiforgery` 会同时下发配套 Cookie，两者成对校验），
- * 再 `POST /admin/api/logout`。BFF 会先撤销 IDP 侧令牌（尽力而为）再清本地会话，
- * 最后把浏览器带到 IDP 的 end-session 端点完成单点登出——该 POST 本身就是一次重定向流，
- * 因此这里不等响应体，直接把窗口交给后端接管。
+ * 再 `POST /admin/api/logout`。BFF 会先撤销 IDP 侧令牌（尽力而为）再清本地会话，并返回
+ * 到 IDP end-session 的重定向——但 fetch 默认 `redirect: "follow"` 是在后台跟着这条链路走完的，
+ * 浏览器顶层从不因此导航，所以最后必须显式 assign 才真正离开会话界面。
+ * 任一步失败（防伪端点非 2xx、网络断开、end-session 跨域无 CORS 响应被 fetch 判错）都
+ * 不再让登出按钮无声失效（此前直接 unhandled rejection，界面毫无反应）：统一兜底跳登录入口，
+ * 让过期的会话壳在下一次进入时被重新认证接管。
  */
 async function logout() {
-  const response = await fetch("/admin/api/antiforgery", { headers: { "X-Requested-With": "XMLHttpRequest" } })
-  const { token } = (await response.json()) as { token: string }
-  await fetch("/admin/api/logout", {
-    method: "POST",
-    headers: { "X-XSRF-Token": token, "X-Requested-With": "XMLHttpRequest" },
-  })
-  window.location.assign("/admin/login")
+  try {
+    const response = await fetch("/admin/api/antiforgery", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+    if (!response.ok) throw new Error(`antiforgery ${response.status}`)
+    const { token } = (await response.json()) as { token: string }
+    await fetch("/admin/api/logout", {
+      method: "POST",
+      headers: { "X-XSRF-Token": token, "X-Requested-With": "XMLHttpRequest" },
+    })
+  } catch {
+    // 撤销/清会话在 BFF 侧尽力而为；这里只保证用户一定能离开当前界面。
+  } finally {
+    window.location.assign("/admin/login")
+  }
 }
 
 /**
@@ -42,8 +51,6 @@ async function logout() {
  * 路由切换只替换 <Outlet/>，导航与登出常驻（此前外壳只存在于概览页，
  * 进入子模块后侧边栏整体消失，2026-09-19 生产走查发现）。
  */
-type Session = { subject: string; name: string | null; email: string | null; nickname: string | null; roles: string[]; portalHomeUrl: string | null }
-
 export default function AppShell() {
   const { pathname } = useLocation()
   const title = TITLES[pathname] ?? "管理后台"
