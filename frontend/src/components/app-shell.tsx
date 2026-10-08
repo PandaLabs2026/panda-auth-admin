@@ -84,7 +84,17 @@ export default function AppShell() {
             </NavLink>
           ))}
         </nav>
-        <div className="border-t px-5 py-3 text-xs text-muted-foreground">v0.3 · 管理后台</div>
+        <div className="border-t px-5 py-3 text-xs">
+          {session?.portalHomeUrl && (
+            <a
+              href={session.portalHomeUrl}
+              className="mb-1 block rounded-md px-1 py-1 text-muted-foreground hover:text-primary"
+            >
+              返回熊猫门户
+            </a>
+          )}
+          <p className="text-muted-foreground">v0.3 · 管理后台</p>
+        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

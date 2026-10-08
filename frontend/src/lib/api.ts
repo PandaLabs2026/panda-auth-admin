@@ -36,6 +36,7 @@ export type Session = {
   email: string | null
   nickname: string | null
   roles: string[]
+  portalHomeUrl: string | null
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
