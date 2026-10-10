@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,32 +11,48 @@ import { apiGet, apiSend, type ClientDetail, type ClientOptions, type ClientSumm
  */
 export default function ClientsPage() {
   const [list, setList] = useState<PageResult<ClientSummary> | null>(null)
+  const [listError, setListError] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<ClientDetail | null>(null)
   const [options, setOptions] = useState<ClientOptions | null>(null)
+  const [optionsError, setOptionsError] = useState<string | null>(null)
   const [redirectUris, setRedirectUris] = useState("")
   const [postLogoutUris, setPostLogoutUris] = useState("")
   const [permissions, setPermissions] = useState<Set<string>>(new Set())
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // 选中详情的乱序守卫（与 users 页 detailSeq 同款）：连续点击两行时，
+  // 慢的旧详情可能后到并覆盖新选中的详情。
+  const selectSeq = useRef(0)
 
   useEffect(() => {
-    apiGet<PageResult<ClientSummary>>("/admin/api/clients").then(setList).catch(() => setList(null))
+    apiGet<PageResult<ClientSummary>>("/admin/api/clients")
+      .then((data) => {
+        setList(data)
+        setListError(null)
+      })
+      .catch((cause) => setListError(cause instanceof Error ? cause.message : "客户端列表加载失败"))
     apiGet<ClientOptions>("/admin/api/clients/options")
-      .then(setOptions)
-      .catch(() => setOptions(null))
+      .then((data) => {
+        setOptions(data)
+        setOptionsError(null)
+      })
+      .catch((cause) => setOptionsError(cause instanceof Error ? cause.message : "权限目录加载失败"))
   }, [])
 
   const select = useCallback(async (clientId: string) => {
+    const seq = ++selectSeq.current
     try {
       setError(null)
       setNotice(null)
-      const detail = await apiGet<ClientDetail>(`/admin/api/clients/${clientId}`)
+      const detail = await apiGet<ClientDetail>(`/admin/api/clients/${encodeURIComponent(clientId)}`)
+      if (seq !== selectSeq.current) return
       setSelected(detail)
       setRedirectUris(detail.redirectUris.join("\n"))
       setPostLogoutUris(detail.postLogoutRedirectUris.join("\n"))
       setPermissions(new Set(detail.permissions))
     } catch (cause) {
+      if (seq !== selectSeq.current) return
       setError(cause instanceof Error ? cause.message : "详情加载失败")
     }
   }, [])
@@ -107,12 +123,13 @@ export default function ClientsPage() {
 
   return (
     <div className="space-y-6">
+      {listError && <p className="text-destructive">{listError}</p>}
       {error && <p className="text-destructive">{error}</p>}
       {notice && <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p>}
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">客户端（{list?.total ?? "…"}）</CardTitle>
+          <CardTitle className="text-base">客户端（{list?.total ?? (listError ? "—" : "…")}）</CardTitle>
           <CardDescription>点击查看与编辑；机密客户端（confidential）持有密钥，公共客户端（public）依赖 PKCE。</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto p-0">
@@ -183,7 +200,10 @@ export default function ClientsPage() {
               <CardDescription>复选即启用；保存为整体替换，服务端校验未知形态。</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {(options?.permissionGroups ?? []).map((group) => (
+              {optionsError ? (
+                <p className="text-sm text-destructive">{optionsError}</p>
+              ) : (
+                (options?.permissionGroups ?? []).map((group) => (
                 <div key={group.group}>
                   <p className="mb-2 text-xs font-medium text-muted-foreground">{group.group}</p>
                   <div className="flex flex-wrap gap-3">
@@ -205,7 +225,8 @@ export default function ClientsPage() {
                     ))}
                   </div>
                 </div>
-              ))}
+                ))
+              )}
               {(selected.requirements ?? []).length > 0 && (
                 <p className="text-xs text-muted-foreground">既有要求（只读）：{selected.requirements.join("、")}</p>
               )}

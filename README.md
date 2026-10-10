@@ -12,7 +12,7 @@ PandaAuth administration uses a .NET 10 BFF and React 19 frontend. Production pa
 
 ## Current implementation and limitations
 
-The [backend](src/PandaAuth.Admin/Program.cs) runs as a first-party OIDC client: `GET /admin/login` is the authentication challenge endpoint (authorization code + PKCE), with cookie sessions and antiforgery tokens. The [login page](frontend/src/pages/login.tsx) navigates to the challenge endpoint; no credentials are entered on this site.
+The [backend](src/PandaAuth.Admin/Program.cs) runs as a first-party OIDC client: `GET /admin/challenge` is the authentication challenge endpoint (authorization code + PKCE), with cookie sessions and antiforgery tokens. The [login page](frontend/src/pages/login.tsx) at `/admin/login` navigates to the challenge endpoint — automatically when carrying a `returnUrl`; no credentials are entered on this site.
 
 Health path `/admin/healthz` and antiforgery endpoint `/admin/api/antiforgery` exist. User, client, role and audit management pages are implemented. Cookie/antiforgery configuration is not proof of completed security acceptance.
 
@@ -31,7 +31,7 @@ cd ..
 dotnet run --project src/PandaAuth.Admin
 ```
 
-After building, http://localhost:9006/admin/login only shows the login scaffold. For frontend hot reload, use another terminal starting at the repository root:
+After building, http://localhost:9006/admin/ shows the admin SPA and `/admin/challenge` starts the OIDC login challenge. For frontend hot reload, use another terminal starting at the repository root:
 
 ```bash
 cd frontend

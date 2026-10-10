@@ -199,11 +199,25 @@ public class RouteGuardTests
         using var factory = new GuardFactory(authenticated: false);
         using var client = factory.CreateClient();
 
-        using var response = await client.GetAsync("/admin/login");
+        using var response = await client.GetAsync("/admin/challenge");
 
         // 401 来自挑战桩（真实环境是 302 到 IDP 授权端点）：证明端点匿名可达且触发挑战，
         // 不是 403（被授权拒）或 404（路由缺失）。
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Anonymous_LoginPageRoute_ServesSpaShell_NotChallenge()
+    {
+        using var factory = new GuardFactory(authenticated: false);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync("/admin/login");
+
+        // /admin/login 是品牌登录页（SPA 回退承载），绝不能再被挑战端点拦截（#20 回归钉）：
+        // 挑战在该路径上的表现是 302/401，SPA 外壳是 200 + text/html。
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
     }
 
     [Fact]
@@ -321,15 +335,15 @@ public class RouteGuardTests
         // 前 10 次（PermitLimit=10）：挑战桩 → 401。
         for (var i = 0; i < 10; i++)
         {
-            using var response = await client.GetAsync("/admin/login");
+            using var response = await client.GetAsync("/admin/challenge");
             Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
         }
 
         // 第 11 次：429。分区键是 RemoteIpAddress（TestServer 下恒定），串行请求计数确定。
-        using var limited = await client.GetAsync("/admin/login");
+        using var limited = await client.GetAsync("/admin/challenge");
         Assert.Equal((HttpStatusCode)429, limited.StatusCode);
 
-        // 限流只挂在 /admin/login：其他匿名端点不受该分区影响。
+        // 限流只挂在 /admin/challenge：其他匿名端点不受该分区影响。
         using var session = await client.GetAsync("/admin/api/session");
         Assert.Equal(HttpStatusCode.Unauthorized, session.StatusCode);
     }

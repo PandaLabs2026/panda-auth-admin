@@ -97,5 +97,6 @@ public sealed class TenantHostContextMiddleware(RequestDelegate next)
 
     private static bool IsAnonymousEntry(PathString path) =>
         path.StartsWithSegments("/admin/login") ||
+        path.StartsWithSegments("/admin/challenge") ||
         path.StartsWithSegments("/admin/callback/login");
 }
