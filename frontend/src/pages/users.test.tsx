@@ -1,5 +1,6 @@
 import { cleanup, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import UsersPage from "./users"
@@ -56,7 +57,8 @@ describe("UsersPage detail ordering", () => {
     }))
     const user = userEvent.setup()
 
-    render(<UsersPage />)
+    // 选中详情由 URL 参数驱动(#27),需要 Router 上下文。
+    render(<MemoryRouter><UsersPage /></MemoryRouter>)
     await user.click(await screen.findByText("alice"))
     await user.click(await screen.getByText("bob"))
 
