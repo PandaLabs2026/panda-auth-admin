@@ -21,10 +21,10 @@ export default defineConfig({
     port: 5171,
     // 只代理 BFF 服务端路由（与 me 仓同款约束）：代理整个 /admin 前缀会让 Vite
     // 把 SPA 静态资源也转给后端，dev server 的 HMR 与本地资源全部失效；
-    // 新增 BFF 路由（如 /admin/logout 页面）须同步补到这里。
+    // 新增 BFF 路由须同步补到这里（/admin/login 是 SPA 品牌登录页，由 Vite 自服务）。
     proxy: {
       "/admin/api": "http://localhost:9006",
-      "/admin/login": "http://localhost:9006",
+      "/admin/challenge": "http://localhost:9006",
       "/admin/callback": "http://localhost:9006",
       "/admin/healthz": "http://localhost:9006",
     },
