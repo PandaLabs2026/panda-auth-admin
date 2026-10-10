@@ -1,9 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   REGISTER_CHANNEL,
   USER_STATUS,
@@ -16,6 +43,8 @@ import {
   type UserDetail,
   type UserSummary,
 } from "@/lib/api"
+import { clearDraft, consumeDraft, saveDraft } from "@/lib/drafts"
+import { getSession } from "@/lib/session"
 
 /** 当前会话主体：用于在列表和详情里隐藏「对自己」的危险操作（server 侧另有硬门禁）。 */
 type Me = { subject: string }
@@ -41,14 +70,50 @@ function isLocked(detail: UserDetail): boolean {
 }
 
 /**
+ * 确认对话框的待确认操作(#28):window.confirm 不可复制说明、无结构化后果展示,换 AlertDialog。
+ * 一个状态机驱动单个对话框,action 里放真正的 handler。
+ */
+type PendingConfirm =
+  | { kind: "freeze"; user: UserSummary }
+  | { kind: "reset-password"; user: UserSummary }
+  | { kind: "roles"; user: UserDetail }
+  | { kind: "unlock"; user: UserDetail }
+  | { kind: "reset-2fa"; user: UserDetail }
+  | { kind: "remove-claim"; claim: UserClaim }
+
+/**
  * 用户管理（0.4）：列表/搜索/详情/建号/角色/冻结解冻/解锁/资料/2FA/注销/重置密码。
  * 冻结、重置、角色变更、注销、资料修改都会使该用户的全部令牌立即失效（server 侧联动批量吊销）。
+ * 筛选/分页/选中详情进 URL(#27),刷新与分享可恢复;表单草稿经 sessionStorage 暂存(#26),
+ * MFA step-up 返回后自动恢复,不自动重放。
  */
 export default function UsersPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // ---- URL 状态(#27):q/status/page/user 是唯一事实源 ----
+  const query = searchParams.get("q") ?? ""
+  const status = searchParams.get("status") ?? ""
+  const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1)
+  const detailUserId = searchParams.get("user")
+
+  const updateParams = useCallback(
+    (patch: Record<string, string | null>, options?: { replace?: boolean }) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          for (const [key, value] of Object.entries(patch)) {
+            if (value === null || value === "") next.delete(key)
+            else next.set(key, value)
+          }
+          return next
+        },
+        { replace: options?.replace ?? false },
+      )
+    },
+    [setSearchParams],
+  )
+
   const [result, setResult] = useState<PageResult<UserSummary> | null>(null)
-  const [query, setQuery] = useState("")
-  const [status, setStatus] = useState("")
-  const [page, setPage] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const [detail, setDetail] = useState<UserDetail | null>(null)
   const [newPassword, setNewPassword] = useState<string | null>(null)
@@ -61,13 +126,17 @@ export default function UsersPage() {
   const [claims, setClaims] = useState<UserClaim[]>([])
   const [claimDraft, setClaimDraft] = useState<ClaimRequest>({ claimType: "panda:", claimValue: "", scope: "api" })
   const [claimsBusy, setClaimsBusy] = useState(false)
+  const [confirming, setConfirming] = useState<PendingConfirm | null>(null)
+  const [deactivateTarget, setDeactivateTarget] = useState<UserDetail | null>(null)
+  const [deactivateInput, setDeactivateInput] = useState("")
+  const [copied, setCopied] = useState(false)
   // 搜索/翻页是输入即触发：用序号丢弃乱序返回的旧响应，避免列表闪回旧查询的结果。
   const loadSeq = useRef(0)
   const pageSize = 20
 
   useEffect(() => {
-    // 静默获取：401 时 apiGet 自会跳登录，这里不额外处理。
-    apiGet<Me>("/admin/api/session").then(setMe).catch(() => setMe(null))
+    // 静默获取：401 时 apiGet 自会跳登录，这里不额外处理。经模块级缓存(#31)共享请求。
+    getSession().then(setMe).catch(() => setMe(null))
   }, [])
 
   const load = useCallback(async () => {
@@ -91,7 +160,7 @@ export default function UsersPage() {
   // 详情与列表同款乱序守卫：连续点击两行时，慢的旧详情可能后到并覆盖新选中的详情。
   const detailSeq = useRef(0)
 
-  async function openDetail(id: string) {
+  const openDetail = useCallback(async (id: string) => {
     const seq = ++detailSeq.current
     try {
       setNewPassword(null)
@@ -103,10 +172,39 @@ export default function UsersPage() {
       if (seq !== detailSeq.current) return
       setDetail(user)
       setClaims(userClaims)
+      // MFA step-up 草稿恢复(#26):草稿带 userId,只有回到同一用户的详情才恢复;
+      // consume 即弃,不匹配的旧草稿顺带清场。
+      const savedClaim = consumeDraft<{ userId: string; draft: ClaimRequest }>("users.claim")
+      if (savedClaim && savedClaim.userId === user.id) setClaimDraft(savedClaim.draft)
+      const savedProfile = consumeDraft<{ userId: string; draft: { email: string; nickname: string; region: string } }>("users.profile")
+      if (savedProfile && savedProfile.userId === user.id) {
+        setProfileDraft(savedProfile.draft)
+        setEditingProfile(true)
+      }
     } catch (cause) {
       if (seq === detailSeq.current) setError(cause instanceof Error ? cause.message : "详情加载失败")
     }
-  }
+  }, [])
+
+  // 选中详情由 URL 驱动(#27):刷新/直链可恢复;参数清空即关闭详情。
+  useEffect(() => {
+    if (detailUserId) {
+      void openDetail(detailUserId)
+    } else {
+      setDetail(null)
+      setClaims([])
+      setEditingProfile(false)
+    }
+  }, [detailUserId, openDetail])
+
+  // 建号表单草稿(#26):MFA step-up 返回后恢复(建号不绑定具体用户,挂载时消费即可)。
+  useEffect(() => {
+    const saved = consumeDraft<CreateDraft>("users.create")
+    if (saved) {
+      setCreating(true)
+      setDraft(saved)
+    }
+  }, [])
 
   async function addClaim() {
     if (!detail) return
@@ -120,9 +218,11 @@ export default function UsersPage() {
       return
     }
     setClaimsBusy(true)
+    saveDraft("users.claim", { userId: detail.id, draft: claimDraft })
     try {
       setError(null)
       const created = await apiSend<UserClaim>("POST", `/admin/api/users/${detail.id}/claims`, request)
+      clearDraft("users.claim")
       setClaims((items) => [...items, created])
       setClaimDraft({ claimType: "panda:", claimValue: "", scope: "api" })
     } catch (cause) {
@@ -133,7 +233,7 @@ export default function UsersPage() {
   }
 
   async function removeClaim(claim: UserClaim) {
-    if (!detail || !window.confirm(`确认删除 Claim ${claim.claimType}？`)) return
+    if (!detail) return
     setClaimsBusy(true)
     try {
       setError(null)
@@ -152,6 +252,7 @@ export default function UsersPage() {
       return
     }
     setBusy(true)
+    saveDraft("users.create", draft)
     try {
       setError(null)
       const response = await apiSend<CreateUserResponse>("POST", "/admin/api/users", {
@@ -162,6 +263,7 @@ export default function UsersPage() {
         password: draft.password || null,
         grantAdminRole: draft.grantAdminRole,
       })
+      clearDraft("users.create")
       setCreating(false)
       setDraft(EMPTY_CREATE)
       if (response.password) setNewPassword(response.password)
@@ -175,12 +277,12 @@ export default function UsersPage() {
 
   async function toggleFreeze(user: UserSummary) {
     const verb = user.status === 1 ? "解冻" : "冻结"
-    if (!window.confirm(`确认${verb}用户 ${user.userName}？${verb === "冻结" ? "其全部登录令牌将立即失效。" : ""}`)) return
     setBusy(true)
     try {
       await apiSend("POST", `/admin/api/users/${user.id}/status`, { status: user.status === 1 ? 0 : 1 })
       await load()
       if (detail?.id === user.id) await openDetail(user.id)
+      setError(null)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : `${verb}失败`)
     } finally {
@@ -189,11 +291,11 @@ export default function UsersPage() {
   }
 
   async function resetPassword(user: UserSummary) {
-    if (!window.confirm(`为用户 ${user.userName} 生成新密码？当前密码将失效，其所有会话将被强制下线。`)) return
     setBusy(true)
     try {
       const response = await apiSend<{ password: string }>("POST", `/admin/api/users/${user.id}/reset-password`, {})
       setNewPassword(response.password)
+      setError(null)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "重置失败")
     } finally {
@@ -204,9 +306,6 @@ export default function UsersPage() {
   async function toggleAdminRole(user: UserDetail) {
     const granting = !user.roles.includes(ADMIN_ROLE)
     const verb = granting ? "授予" : "移除"
-    if (!window.confirm(
-      `确认${verb}用户 ${user.userName} 的管理员角色？变更将吊销其全部令牌（立即生效）。`,
-    )) return
     setBusy(true)
     try {
       setError(null)
@@ -221,7 +320,6 @@ export default function UsersPage() {
   }
 
   async function unlock(user: UserDetail) {
-    if (!window.confirm(`确认解锁用户 ${user.userName}？将清除临时锁定与连续失败计数。`)) return
     setBusy(true)
     try {
       setError(null)
@@ -235,9 +333,6 @@ export default function UsersPage() {
   }
 
   async function resetTwoFactor(user: UserDetail) {
-    if (!window.confirm(
-      `确认重置用户 ${user.userName} 的两步验证？将关闭 2FA 并吊销其全部令牌（该账号会被强制下线${user.id === me?.subject ? "，包括你当前的管理台会话" : ""}）。`,
-    )) return
     setBusy(true)
     try {
       setError(null)
@@ -258,6 +353,7 @@ export default function UsersPage() {
   async function submitProfile() {
     if (!detail) return
     setBusy(true)
+    saveDraft("users.profile", { userId: detail.id, draft: profileDraft })
     try {
       setError(null)
       setDetail(await apiSend<UserDetail>("PUT", `/admin/api/users/${detail.id}/profile`, {
@@ -265,6 +361,7 @@ export default function UsersPage() {
         nickname: profileDraft.nickname.trim() || null,
         region: profileDraft.region.trim() || null,
       }))
+      clearDraft("users.profile")
       setEditingProfile(false)
       await load()
     } catch (cause) {
@@ -275,18 +372,12 @@ export default function UsersPage() {
   }
 
   async function deactivate(user: UserDetail) {
-    const input = window.prompt(
-      `注销为不可恢复操作：账号将无法登录、全部会话立即失效，管理台不提供恢复入口。\n如确认，请原样输入该用户的用户名：${user.userName}`,
-    )
-    if (input === null) return
-    if (input !== user.userName) {
-      setError("确认用户名不匹配，未执行注销。")
-      return
-    }
     setBusy(true)
     try {
       setError(null)
       await apiSend("POST", `/admin/api/users/${user.id}/deactivate`, { confirmUserName: user.userName })
+      setDeactivateTarget(null)
+      setDeactivateInput("")
       await load()
       await openDetail(user.id)
     } catch (cause) {
@@ -296,16 +387,17 @@ export default function UsersPage() {
     }
   }
 
-  // 新密码「仅显示一次」:出现时自动滚动到卡位并支持复制,避免卡片落在视口外被错过(#25)。
-  const passwordCardRef = useRef<HTMLDivElement>(null)
-  const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (newPassword) {
-      passwordCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
-      setCopied(false)
-    }
-  }, [newPassword])
+  function runConfirm() {
+    if (!confirming) return
+    const pending = confirming
+    setConfirming(null)
+    if (pending.kind === "freeze") void toggleFreeze(pending.user)
+    else if (pending.kind === "reset-password") void resetPassword(pending.user)
+    else if (pending.kind === "roles") void toggleAdminRole(pending.user)
+    else if (pending.kind === "unlock") void unlock(pending.user)
+    else if (pending.kind === "reset-2fa") void resetTwoFactor(pending.user)
+    else if (pending.kind === "remove-claim") void removeClaim(pending.claim)
+  }
 
   async function copyNewPassword() {
     if (!newPassword) return
@@ -314,11 +406,53 @@ export default function UsersPage() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // 剪贴板不可用(非安全上下文等):静默,密码文本仍可手动选中复制。
+      // 剪贴板不可用（非安全上下文等）：静默，密码文本仍可手动选中复制。
     }
   }
 
   const totalPages = result ? Math.max(1, Math.ceil(result.total / pageSize)) : 1
+
+  // 确认对话框文案(单一来源,渲染见文件尾部的 AlertDialog)。
+  const confirmCopy = confirming
+    ? confirming.kind === "freeze"
+      ? {
+          title: `${confirming.user.status === 1 ? "解冻" : "冻结"}用户 ${confirming.user.userName}？`,
+          description:
+            confirming.user.status === 1
+              ? "解冻后账号可正常登录。"
+              : "其全部登录令牌将立即失效。",
+          actionText: confirming.user.status === 1 ? "解冻" : "冻结",
+        }
+      : confirming.kind === "reset-password"
+        ? {
+            title: `为用户 ${confirming.user.userName} 生成新密码？`,
+            description: "当前密码将失效，其所有会话将被强制下线。新密码仅显示一次。",
+            actionText: "生成新密码",
+          }
+        : confirming.kind === "roles"
+          ? {
+              title: `${confirming.user.roles.includes(ADMIN_ROLE) ? "移除" : "授予"}用户 ${confirming.user.userName} 的管理员角色？`,
+              description: "变更将吊销其全部令牌（立即生效）。",
+              actionText: confirming.user.roles.includes(ADMIN_ROLE) ? "移除管理员" : "设为管理员",
+            }
+          : confirming.kind === "unlock"
+            ? {
+                title: `解锁用户 ${confirming.user.userName}？`,
+                description: "将清除临时锁定与连续失败计数。",
+                actionText: "解锁",
+              }
+            : confirming.kind === "reset-2fa"
+              ? {
+                  title: `重置用户 ${confirming.user.userName} 的两步验证？`,
+                  description: `将关闭 2FA 并吊销其全部令牌（该账号会被强制下线${confirming.user.id === me?.subject ? "，包括你当前的管理台会话" : ""}）。`,
+                  actionText: "重置两步验证",
+                }
+              : {
+                  title: `删除 Claim ${confirming.claim.claimType}？`,
+                  description: "删除后即刻生效；添加和删除 Claim 都会记录管理审计。",
+                  actionText: "删除",
+                }
+    : null
 
   return (
     <div className="space-y-6">
@@ -329,29 +463,26 @@ export default function UsersPage() {
             id="query"
             className="w-64"
             value={query}
-            onChange={(event) => {
-              setPage(1)
-              setQuery(event.target.value)
-            }}
+            onChange={(event) => updateParams({ q: event.target.value, page: null }, { replace: true })}
             placeholder="输入即搜索"
           />
         </div>
         <div className="grid gap-1.5">
           <Label htmlFor="status">状态</Label>
-          <select
-            id="status"
-            className="h-9 rounded-md border bg-background px-3 text-sm"
+          <Select
             value={status}
-            onChange={(event) => {
-              setPage(1)
-              setStatus(event.target.value)
-            }}
+            onValueChange={(value) => updateParams({ status: value === "all" ? null : value, page: null })}
           >
-            <option value="">全部</option>
-            <option value="0">正常</option>
-            <option value="1">已冻结</option>
-            <option value="2">已注销</option>
-          </select>
+            <SelectTrigger id="status" className="w-32">
+              <SelectValue placeholder="全部" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部</SelectItem>
+              <SelectItem value="0">正常</SelectItem>
+              <SelectItem value="1">已冻结</SelectItem>
+              <SelectItem value="2">已注销</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
         {result && <span className="pb-2 text-sm text-muted-foreground">共 {result.total} 个账号</span>}
         <div className="ml-auto pb-2">
@@ -419,10 +550,9 @@ export default function UsersPage() {
               />
             </div>
             <label className="flex items-center gap-2 self-end text-sm">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={draft.grantAdminRole}
-                onChange={(event) => setDraft({ ...draft, grantAdminRole: event.target.checked })}
+                onCheckedChange={(checked) => setDraft({ ...draft, grantAdminRole: checked === true })}
               />
               创建后授予管理员角色
             </label>
@@ -460,7 +590,10 @@ export default function UsersPage() {
             <tbody>
               {(result?.items ?? []).map((user) => (
                 <tr key={user.id} className="border-b last:border-0 hover:bg-muted/20">
-                  <td className="cursor-pointer px-4 py-3 font-medium" onClick={() => void openDetail(user.id)}>
+                  <td
+                    className="cursor-pointer px-4 py-3 font-medium"
+                    onClick={() => updateParams({ user: user.id })}
+                  >
                     {user.userName}
                     {user.nickname ? <span className="ml-2 text-xs text-muted-foreground">{user.nickname}</span> : null}
                   </td>
@@ -484,10 +617,20 @@ export default function UsersPage() {
                         已注销（终态）的行同样不提供——状态端点只接受 Active/Frozen 互转。 */}
                     {me?.subject !== user.id && user.status !== 2 && (
                       <>
-                        <Button variant="outline" size="sm" disabled={busy} onClick={() => void toggleFreeze(user)}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setConfirming({ kind: "freeze", user })}
+                        >
                           {user.status === 1 ? "解冻" : "冻结"}
                         </Button>
-                        <Button variant="outline" size="sm" disabled={busy} onClick={() => void resetPassword(user)}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => setConfirming({ kind: "reset-password", user })}
+                        >
                           重置密码
                         </Button>
                       </>
@@ -512,17 +655,30 @@ export default function UsersPage() {
           第 {page} / {totalPages} 页
         </span>
         <div className="space-x-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => updateParams({ page: String(page - 1) })}
+          >
             上一页
           </Button>
-          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages}
+            onClick={() => updateParams({ page: String(page + 1) })}
+          >
             下一页
           </Button>
         </div>
       </div>
 
       {newPassword && (
-        <div ref={passwordCardRef}>
+        <div ref={(node) => {
+          // 出现即滚动到视口中央(#25):一次性密码不可再取,不能让用户翻找。
+          if (node && newPassword) node.scrollIntoView({ behavior: "smooth", block: "center" })
+        }}>
           <Card className="border-amber-300 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/50">
             <CardHeader>
               <CardTitle className="text-sm text-amber-800 dark:text-amber-300">新密码（仅显示这一次）</CardTitle>
@@ -541,8 +697,20 @@ export default function UsersPage() {
       {detail && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">账号详情 · {detail.userName}</CardTitle>
-            <CardDescription>{detail.email ?? "未绑定邮箱"}</CardDescription>
+            <div className="flex items-start justify-between">
+              <div>
+                <CardTitle className="text-base">账号详情 · {detail.userName}</CardTitle>
+                <CardDescription>{detail.email ?? "未绑定邮箱"}</CardDescription>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label="关闭详情"
+                onClick={() => updateParams({ user: null })}
+              >
+                关闭
+              </Button>
+            </div>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-2">
             <p>状态：{USER_STATUS[detail.status] ?? detail.status}</p>
@@ -569,7 +737,12 @@ export default function UsersPage() {
               )}
               {/* 自降级被 server 硬门禁拒绝；已注销（终态）账号拒绝一切变更——两种情况都不展示按钮。 */}
               {detail.status !== 2 && !(detail.id === me?.subject && detail.roles.includes(ADMIN_ROLE)) && (
-                <Button variant="outline" size="sm" disabled={busy} onClick={() => void toggleAdminRole(detail)}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => setConfirming({ kind: "roles", user: detail })}
+                >
                   {detail.roles.includes(ADMIN_ROLE) ? "移除管理员" : "设为管理员"}
                 </Button>
               )}
@@ -581,12 +754,22 @@ export default function UsersPage() {
                   编辑资料
                 </Button>
                 {isLocked(detail) && (
-                  <Button variant="outline" size="sm" disabled={busy} onClick={() => void unlock(detail)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setConfirming({ kind: "unlock", user: detail })}
+                  >
                     解锁
                   </Button>
                 )}
                 {detail.twoFactorEnabled && (
-                  <Button variant="outline" size="sm" disabled={busy} onClick={() => void resetTwoFactor(detail)}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setConfirming({ kind: "reset-2fa", user: detail })}
+                  >
                     重置两步验证
                   </Button>
                 )}
@@ -596,7 +779,10 @@ export default function UsersPage() {
                     size="sm"
                     className="border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
                     disabled={busy}
-                    onClick={() => void deactivate(detail)}
+                    onClick={() => {
+                      setDeactivateInput("")
+                      setDeactivateTarget(detail)
+                    }}
                   >
                     注销账号
                   </Button>
@@ -680,7 +866,12 @@ export default function UsersPage() {
                         <td className="px-3 py-2">{claim.claimValue}</td>
                         <td className="px-3 py-2 font-mono text-xs">{claim.scope}</td>
                         <td className="px-3 py-2 text-right">
-                          <Button variant="outline" size="sm" disabled={claimsBusy} onClick={() => void removeClaim(claim)}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={claimsBusy}
+                            onClick={() => setConfirming({ kind: "remove-claim", claim })}
+                          >
                             删除
                           </Button>
                         </td>
@@ -712,6 +903,62 @@ export default function UsersPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* 变更确认(#28):单一 AlertDialog 承载全部确认语义,文案见 confirmCopy。 */}
+      <AlertDialog open={confirming !== null} onOpenChange={(open) => !open && setConfirming(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirmCopy?.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirmCopy?.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={runConfirm}>{confirmCopy?.actionText}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 注销(#28):保留「原样输入用户名」防误触语义,window.prompt 换 Dialog+Input。 */}
+      <Dialog
+        open={deactivateTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDeactivateTarget(null)
+            setDeactivateInput("")
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>注销账号 {deactivateTarget?.userName}？</DialogTitle>
+            <DialogDescription>
+              注销为不可恢复操作：账号将无法登录、全部会话立即失效，管理台不提供恢复入口。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor="deactivate-confirm">如确认，请原样输入该用户的用户名</Label>
+            <Input
+              id="deactivate-confirm"
+              value={deactivateInput}
+              onChange={(event) => setDeactivateInput(event.target.value)}
+              placeholder={deactivateTarget?.userName}
+              autoComplete="off"
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeactivateTarget(null)}>
+              取消
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={busy || deactivateTarget === null || deactivateInput !== deactivateTarget.userName}
+              onClick={() => deactivateTarget && void deactivate(deactivateTarget)}
+            >
+              注销账号
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
