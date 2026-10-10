@@ -1,6 +1,8 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
+
+import { MemoryRouter } from "react-router-dom"
 
 import RolesPage from "./roles"
 
@@ -25,7 +27,7 @@ describe("RolesPage", () => {
     }))
     const user = userEvent.setup()
 
-    render(<RolesPage />)
+    render(<MemoryRouter><RolesPage /></MemoryRouter>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
 
     expect(await screen.findByText("panda:department")).toBeInTheDocument()
@@ -46,7 +48,7 @@ describe("RolesPage", () => {
     vi.stubGlobal("fetch", fetchMock)
     const user = userEvent.setup()
 
-    render(<RolesPage />)
+    render(<MemoryRouter><RolesPage /></MemoryRouter>)
     await user.click(await screen.findByRole("button", { name: "special" }))
 
     expect(await screen.findByText("panda:department")).toBeInTheDocument()
@@ -65,7 +67,7 @@ describe("RolesPage", () => {
     }))
     const user = userEvent.setup()
 
-    render(<RolesPage />)
+    render(<MemoryRouter><RolesPage /></MemoryRouter>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
 
     expect(await screen.findByText("正在加载 Claims…")).toBeInTheDocument()
@@ -91,7 +93,7 @@ describe("RolesPage", () => {
     }))
     const user = userEvent.setup()
 
-    render(<RolesPage />)
+    render(<MemoryRouter><RolesPage /></MemoryRouter>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
     await user.type(screen.getByLabelText("搜索角色"), "removed")
     await waitFor(() => expect(screen.queryByText("自定义 Claims · admin")).not.toBeInTheDocument())
@@ -112,7 +114,7 @@ describe("RolesPage", () => {
     }))
     const user = userEvent.setup()
 
-    render(<RolesPage />)
+    render(<MemoryRouter><RolesPage /></MemoryRouter>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
 
     expect(await screen.findByText("Claims 加载失败")).toBeInTheDocument()
@@ -129,7 +131,7 @@ describe("RolesPage", () => {
     vi.stubGlobal("fetch", fetchMock)
     const user = userEvent.setup()
 
-    render(<RolesPage />)
+    render(<MemoryRouter><RolesPage /></MemoryRouter>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
     await screen.findByText("暂无自定义 Claims。")
     await user.click(screen.getByRole("button", { name: "添加" }))
@@ -138,21 +140,36 @@ describe("RolesPage", () => {
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === "POST")).toBe(false)
   })
 
-  it("confirms before deleting a role claim", async () => {
+  it("confirms before deleting a role claim via AlertDialog", async () => {
     const fetchMock = vi.fn((path: string, _options?: RequestInit) => {
+      if (path === "/admin/api/antiforgery") return Promise.resolve(json({ token: "csrf-token" }))
       if (path.startsWith("/admin/api/roles?")) return Promise.resolve(json(roles))
       if (path === "/admin/api/roles/role-1/claims") return Promise.resolve(json(claims))
+      if (path === "/admin/api/roles/role-1/claims/1") return Promise.resolve(new Response(null, { status: 204 }))
       return Promise.reject(new Error(`unexpected request: ${path}`))
     })
     vi.stubGlobal("fetch", fetchMock)
-    vi.stubGlobal("confirm", vi.fn(() => false))
     const user = userEvent.setup()
 
-    render(<RolesPage />)
+    render(<MemoryRouter><RolesPage /></MemoryRouter>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
     await user.click(await screen.findByRole("button", { name: "删除" }))
 
-    await waitFor(() => expect(window.confirm).toHaveBeenCalled())
+    // #28:window.confirm 换 AlertDialog——先弹确认,不直接发 DELETE。
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([, options]) => options?.method === "DELETE")).toBe(false)
+
+    // 取消:对话框关闭,仍无 DELETE。
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "取消" }))
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === "DELETE")).toBe(false)
+
+    // 确认:发出 DELETE 且对话框收起。
+    await user.click(await screen.findByRole("button", { name: "删除" }))
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "删除" }))
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([, options]) => options?.method === "DELETE")).toBe(true),
+    )
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
   })
 })
