@@ -2,8 +2,9 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { apiGet, type Session } from "@/lib/api"
+import { type Session } from "@/lib/api"
 import { NAV } from "@/lib/nav"
+import { getSession } from "@/lib/session"
 
 /** OIDC discovery 的常用子集（公网同源端点 /.well-known/openid-configuration，无凭据）。 */
 type Discovery = {
@@ -33,8 +34,8 @@ export default function DashboardPage() {
   const [error, setError] = useState(false)
 
   useEffect(() => {
-    // 会话经统一 API 层取（401 自动带 returnUrl 全页跳登录，见 api.ts），页面不再各抄一份。
-    apiGet<Session>("/admin/api/session")
+    // 会话经模块级缓存取(#31,与 AppShell 共享同一次请求);401 自动带 returnUrl 全页跳登录。
+    getSession()
       .then(setSession)
       .catch(() => setError(true))
       .finally(() => setLoading(false))
