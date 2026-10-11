@@ -104,7 +104,7 @@ export default function AppShell() {
         {navLinks}
         <div className="border-t px-5 py-3 text-xs">
           {portalLink}
-          <p className="text-muted-foreground">v0.3 · 管理后台</p>
+          <p className="text-muted-foreground">v{__APP_VERSION__} · 管理后台</p>
         </div>
       </aside>
 
@@ -135,7 +135,7 @@ export default function AppShell() {
                 </p>
               )}
               {portalLink}
-              <p className="text-muted-foreground">v0.3 · 管理后台</p>
+              <p className="text-muted-foreground">v{__APP_VERSION__} · 管理后台</p>
             </div>
           </aside>
         </div>

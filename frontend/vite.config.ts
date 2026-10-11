@@ -3,12 +3,18 @@ import { fileURLToPath } from "node:url"
 import { defineConfig } from "vite"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
+import pkg from "./package.json"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // 对齐 panda-webapp 模式：构建产物直接落到 .NET BFF 的 wwwroot/admin。
 export default defineConfig({
   base: "/admin/",
+  // 版本单一事实源(#31):侧边栏版本号取 package.json version(0.3.0 对齐 admin 0.3 里程碑),
+  // 不再手抄字面量。
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+  },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { "@": path.resolve(dirname, "./src") },
