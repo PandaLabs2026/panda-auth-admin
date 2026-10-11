@@ -197,6 +197,13 @@ export default function AuditPage() {
                     <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{log.ipAddress ?? "—"}</td>
                   </tr>
                 ))}
+                {!logins && !error && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                      正在加载…
+                    </td>
+                  </tr>
+                )}
                 {logins && logins.items.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
@@ -232,6 +239,13 @@ export default function AuditPage() {
                     <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{log.ipAddress ?? "—"}</td>
                   </tr>
                 ))}
+                {!admin && !error && (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                      正在加载…
+                    </td>
+                  </tr>
+                )}
                 {admin && admin.items.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
