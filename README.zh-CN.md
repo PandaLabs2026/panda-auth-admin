@@ -12,7 +12,7 @@ PandaAuth 管理后台，由 .NET 10 BFF 与 React 19 前端组成。生产路�
 
 ## 当前实现与限制
 
-[后端入口](src/PandaAuth.Admin/Program.cs)以第一方 OIDC 客户端运行：`GET /admin/login` 是认证挑战端点（授权码 + PKCE），配合 Cookie 会话与防伪令牌；[登录页](frontend/src/pages/login.tsx)全页导航到挑战端点，本站不做凭据输入。
+[后端入口](src/PandaAuth.Admin/Program.cs)以第一方 OIDC 客户端运行：`GET /admin/challenge` 是认证挑战端点（授权码 + PKCE），配合 Cookie 会话与防伪令牌；[登录页](frontend/src/pages/login.tsx)位于 `/admin/login`，携带 `returnUrl` 到达时自动导航到挑战端点，本站不做凭据输入。
 
 健康路径 `/admin/healthz` 与防伪入口 `/admin/api/antiforgery` 存在。用户、客户端、角色与审计管理页面已实现；Cookie/防伪配置存在不等于安全验收通过。
 
@@ -31,7 +31,7 @@ cd ..
 dotnet run --project src/PandaAuth.Admin
 ```
 
-构建后访问 http://localhost:9006/admin/login，仅显示登录骨架。前端热更新可在另一终端从本仓根目录执行：
+构建后访问 http://localhost:9006/admin/ 进入管理台 SPA，`/admin/challenge` 发起 OIDC 登录挑战。前端热更新可在另一终端从本仓根目录执行：
 
 ```bash
 cd frontend

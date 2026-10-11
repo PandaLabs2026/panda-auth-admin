@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from "@testing-library/react"
+import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import DashboardPage from "./dashboard"
@@ -29,7 +30,8 @@ describe("DashboardPage", () => {
     })
     vi.stubGlobal("fetch", fetchMock)
 
-    render(<DashboardPage />)
+    // 管理模块卡使用 react-router Link(#24),需要 Router 上下文;用 MemoryRouter 包裹。
+    render(<MemoryRouter><DashboardPage /></MemoryRouter>)
 
     // 身份卡来自统一 apiGet（会话经 /admin/api/session，401 语义由 api 层统一处理）。
     expect(await screen.findByText("管理员甲")).toBeInTheDocument()

@@ -4,7 +4,7 @@ namespace PandaAuth.Admin;
 /// 登录回调失败的错误码白名单与文案映射。
 /// </summary>
 /// <remarks>
-/// 回调认证失败时把 error 码带回 /admin/login 可见化（否则系统性故障下用户在
+/// 回调认证失败时把 error 码带回 /admin/challenge 可见化（否则系统性故障下用户在
 /// admin↔IDP 之间打转直到限流 429，全程无提示）。error 码只允许白名单成员进入
 /// 查询串、文案完全出自本表：<c>error_description</c> 等 IDP 原文**不**透传——
 /// 那是一段未经约束的输入，拼进重定向或页面都是现成的注入面，而固定文案已足够
@@ -46,7 +46,7 @@ public static class LoginError
 
     /// <summary>构建带回错误码的登录入口重定向地址（仅白名单码，无其他透传参数）。</summary>
     public static string RedirectTarget(string? code)
-        => "/admin/login?error=" + Uri.EscapeDataString(Normalize(code));
+        => "/admin/challenge?error=" + Uri.EscapeDataString(Normalize(code));
 
     /// <summary>错误码对应的人话文案（输入先行白名单化）。</summary>
     public static string Describe(string? code)

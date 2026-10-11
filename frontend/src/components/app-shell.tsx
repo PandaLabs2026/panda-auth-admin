@@ -1,25 +1,10 @@
 import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
+import { Menu, X } from "lucide-react"
 import { apiGet, type Session } from "@/lib/api"
+import { NAV, NAV_TITLES } from "@/lib/nav"
 
 import { Button } from "@/components/ui/button"
-
-/** 侧边栏导航：概览与三个管理模块（0.3 实装），当前路由高亮。 */
-const NAV = [
-  { to: "/", label: "概览" },
-  { to: "/users", label: "用户管理" },
-  { to: "/roles", label: "角色管理" },
-  { to: "/clients", label: "客户端管理" },
-  { to: "/audit", label: "审计查询" },
-] as const
-
-const TITLES: Record<string, string> = {
-  "/": "概览",
-  "/users": "用户管理",
-  "/roles": "角色管理",
-  "/clients": "客户端管理",
-  "/audit": "审计查询",
-}
 
 /**
  * 登出：先取防伪令牌（`GET /admin/api/antiforgery` 会同时下发配套 Cookie，两者成对校验），
@@ -53,53 +38,121 @@ async function logout() {
  */
 export default function AppShell() {
   const { pathname } = useLocation()
-  const title = TITLES[pathname] ?? "管理后台"
+  const title = NAV_TITLES[pathname] ?? "管理后台"
   const [session, setSession] = useState<Session | null>(null)
+  // 移动端抽屉:<768px 侧边栏隐藏,此前无任何导航入口,用户被困在落地页(#22)。
+  const [navOpen, setNavOpen] = useState(false)
 
   useEffect(() => {
     // 静默获取当前用户（401 时 apiGet 自会跳登录）；仅用于顶栏展示。
     apiGet<Session>("/admin/api/session").then(setSession).catch(() => setSession(null))
   }, [])
 
+  useEffect(() => {
+    if (!navOpen) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setNavOpen(false)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    return () => {
+      window.removeEventListener("keydown", onKeyDown)
+      document.body.style.overflow = previousOverflow
+    }
+  }, [navOpen])
+
+  const brand = (
+    <div className="flex items-center gap-2.5 px-5 py-5 text-base font-bold text-primary">
+      <img src="/admin/apple-touch-icon.png" alt="" className="h-8 w-8 rounded-lg" />
+      PandaAuth
+    </div>
+  )
+
+  const navLinks = (
+    <nav className="flex-1 space-y-1 px-3 text-sm">
+      {NAV.map((item) => (
+        <NavLink
+          key={item.to}
+          to={item.to}
+          end={item.to === "/"}
+          onClick={() => setNavOpen(false)}
+          className={({ isActive }) =>
+            `flex items-center rounded-md px-3 py-2 ${
+              isActive ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted/50"
+            }`
+          }
+        >
+          {item.label}
+        </NavLink>
+      ))}
+    </nav>
+  )
+
+  const portalLink = session?.portalHomeUrl && (
+    <a href={session.portalHomeUrl} className="mb-1 block rounded-md px-1 py-1 text-muted-foreground hover:text-primary">
+      返回熊猫门户
+    </a>
+  )
+
   return (
     <div className="flex min-h-screen bg-muted/30">
       <aside className="hidden w-56 shrink-0 flex-col border-r bg-card md:flex">
-        <div className="flex items-center gap-2.5 px-5 py-5 text-base font-bold text-primary">
-          <img src="/admin/apple-touch-icon.png" alt="" className="h-8 w-8 rounded-lg" />
-          PandaAuth
-        </div>
-        <nav className="flex-1 space-y-1 px-3 text-sm">
-          {NAV.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.to === "/"}
-              className={({ isActive }) =>
-                `flex items-center rounded-md px-3 py-2 ${
-                  isActive ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted/50"
-                }`
-              }
-            >
-              {item.label}
-            </NavLink>
-          ))}
-        </nav>
+        {brand}
+        {navLinks}
         <div className="border-t px-5 py-3 text-xs">
-          {session?.portalHomeUrl && (
-            <a
-              href={session.portalHomeUrl}
-              className="mb-1 block rounded-md px-1 py-1 text-muted-foreground hover:text-primary"
-            >
-              返回熊猫门户
-            </a>
-          )}
+          {portalLink}
           <p className="text-muted-foreground">v0.3 · 管理后台</p>
         </div>
       </aside>
 
+      {/* 移动端抽屉:点链接/Esc/遮罩关闭;打开期间锁页面滚动。 */}
+      {navOpen && (
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="导航菜单">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setNavOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 flex w-64 flex-col border-r bg-card shadow-xl">
+            <div className="flex items-center justify-between pr-3">
+              {brand}
+              <button
+                type="button"
+                aria-label="关闭导航"
+                className="rounded-md p-2 text-muted-foreground hover:bg-muted"
+                onClick={() => setNavOpen(false)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {navLinks}
+            <div className="border-t px-5 py-3 text-xs">
+              {session && (
+                <p className="mb-1 flex items-center gap-2 text-muted-foreground">
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+                    {(session.nickname ?? session.name ?? session.email ?? "?").slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="truncate">{session.nickname ?? session.name ?? session.email}</span>
+                </p>
+              )}
+              {portalLink}
+              <p className="text-muted-foreground">v0.3 · 管理后台</p>
+            </div>
+          </aside>
+        </div>
+      )}
+
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b bg-card px-6 py-3">
-          <h1 className="text-sm font-semibold">{title}</h1>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-expanded={navOpen}
+              aria-label="打开导航"
+              className="rounded-md p-2 text-muted-foreground hover:bg-muted md:hidden"
+              onClick={() => setNavOpen(true)}
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+            <h1 className="text-sm font-semibold">{title}</h1>
+          </div>
           <div className="flex items-center gap-2">
             {/* 全页跳转（非 SPA 路由）：改密页在 IDP（/account/*），凭据是 OIDC 登录时
                 建立的 IDP 会话 Cookie；成功后令牌全吊销，管理台会话一并失效需重新登录。 */}

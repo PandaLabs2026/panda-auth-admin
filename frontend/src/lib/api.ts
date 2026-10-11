@@ -42,7 +42,7 @@ export type Session = {
 export async function apiGet<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { "X-Requested-With": "XMLHttpRequest" } })
   if (response.status === 401) unauthorized()
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  if (!response.ok) throw new Error(`请求失败(HTTP ${response.status})`)
   // 会话 Cookie 过期时 BFF 返回 302 → fetch 跟随重定向最终拿到登录页 HTML（200）：
   // JSON 解析必然失败，统一折算为带 returnUrl 的登录跳转而不是莫名的解析报错。
   const contentType = response.headers.get("content-type") ?? ""
@@ -64,7 +64,8 @@ export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string
   if (response.status === 401) unauthorized()
   if (response.status === 403 && response.headers.get(MFA_REQUIRED_HEADER) === "true") mfaRequired()
   if (!response.ok) {
-    let detail = `HTTP ${response.status}`
+    // 非 ProblemDetails 的失败(裸 5xx、代理故障等)折算人话文案,不把原始状态码甩给用户。
+    let detail = `请求失败(HTTP ${response.status})`
     try {
       const problem = (await response.json()) as { detail?: string; title?: string }
       detail = problem.detail ?? problem.title ?? detail

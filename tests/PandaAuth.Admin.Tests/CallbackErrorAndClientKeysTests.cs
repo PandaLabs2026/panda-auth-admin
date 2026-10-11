@@ -104,7 +104,7 @@ public class CallbackErrorAndClientKeysTests
             return null;
         }
 
-        // Location 是相对路径（/admin/login?error=…）：挂到哑主机上只为解析查询串。
+        // Location 是相对路径（/admin/challenge?error=…）：挂到哑主机上只为解析查询串。
         return QueryHelpers.ParseQuery(new Uri("http://localhost" + location).Query)["error"].ToString();
     }
 
@@ -151,7 +151,7 @@ public class CallbackErrorAndClientKeysTests
         using var factory = new CallbackFactory(keyDirectory: null);
         using var client = factory.CreateClient();
 
-        using var denied = await client.GetAsync("/admin/login?error=access_denied");
+        using var denied = await client.GetAsync("/admin/challenge?error=access_denied");
         Assert.Equal(HttpStatusCode.OK, denied.StatusCode);
         Assert.Equal("text/html", denied.Content.Headers.ContentType?.MediaType);
         var body = await denied.Content.ReadAsStringAsync();
@@ -161,7 +161,7 @@ public class CallbackErrorAndClientKeysTests
 
         // 白名单外的任何串（含注入尝试）折算固定文案，原文绝不进页面/查询串。
         using var injected = await client.GetAsync(
-            "/admin/login?error=%3Cscript%3Ealert(1)%3C%2Fscript%3E");
+            "/admin/challenge?error=%3Cscript%3Ealert(1)%3C%2Fscript%3E");
         Assert.Equal(HttpStatusCode.OK, injected.StatusCode);
         var fallback = await injected.Content.ReadAsStringAsync();
         Assert.DoesNotContain("<script", fallback, StringComparison.OrdinalIgnoreCase);
@@ -180,7 +180,7 @@ public class CallbackErrorAndClientKeysTests
         Assert.Equal(HttpStatusCode.Redirect, response.StatusCode);
 
         var location = response.Headers.Location?.ToString() ?? string.Empty;
-        Assert.StartsWith("/admin/login?error=", location, StringComparison.Ordinal);
+        Assert.StartsWith("/admin/challenge?error=", location, StringComparison.Ordinal);
         // OpenIddict 对无法校验的 state 以 invalid_token 拒绝（白名单成员，页面上是固定人话文案）。
         Assert.Equal("invalid_token", ErrorOfLocation(location));
     }
@@ -198,7 +198,7 @@ public class CallbackErrorAndClientKeysTests
             using (var first = new CallbackFactory(keyDirectory))
             using (var client = CreateClientBehindTlsProxy(first))
             {
-                using var challenge = await client.GetAsync("/admin/login?returnUrl=/admin/");
+                using var challenge = await client.GetAsync("/admin/challenge?returnUrl=/admin/");
                 Assert.Equal(HttpStatusCode.Redirect, challenge.StatusCode);
                 Assert.StartsWith(FakeIssuer + "connect/authorize", challenge.Headers.Location!.ToString(), StringComparison.Ordinal);
                 var (challengeState, challengeCookie) = ParseChallenge(challenge);

@@ -296,6 +296,28 @@ export default function UsersPage() {
     }
   }
 
+  // 新密码「仅显示一次」:出现时自动滚动到卡位并支持复制,避免卡片落在视口外被错过(#25)。
+  const passwordCardRef = useRef<HTMLDivElement>(null)
+  const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    if (newPassword) {
+      passwordCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+      setCopied(false)
+    }
+  }, [newPassword])
+
+  async function copyNewPassword() {
+    if (!newPassword) return
+    try {
+      await navigator.clipboard.writeText(newPassword)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // 剪贴板不可用(非安全上下文等):静默,密码文本仍可手动选中复制。
+    }
+  }
+
   const totalPages = result ? Math.max(1, Math.ceil(result.total / pageSize)) : 1
 
   return (
@@ -500,15 +522,20 @@ export default function UsersPage() {
       </div>
 
       {newPassword && (
-        <Card className="border-amber-300 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/50">
-          <CardHeader>
-            <CardTitle className="text-sm text-amber-800 dark:text-amber-300">新密码（仅显示这一次）</CardTitle>
-            <CardDescription>请立即复制并安全送达用户；服务端只保留哈希，无法再次取出。</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <code className="rounded bg-white px-3 py-2 font-mono text-base dark:bg-muted">{newPassword}</code>
-          </CardContent>
-        </Card>
+        <div ref={passwordCardRef}>
+          <Card className="border-amber-300 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/50">
+            <CardHeader>
+              <CardTitle className="text-sm text-amber-800 dark:text-amber-300">新密码（仅显示这一次）</CardTitle>
+              <CardDescription>请立即复制并安全送达用户；服务端只保留哈希，无法再次取出。</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-wrap items-center gap-3">
+              <code className="rounded bg-white px-3 py-2 font-mono text-base dark:bg-muted">{newPassword}</code>
+              <Button variant="outline" size="sm" onClick={() => void copyNewPassword()}>
+                {copied ? "已复制" : "复制"}
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {detail && (

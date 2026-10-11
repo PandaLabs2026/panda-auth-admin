@@ -13,11 +13,17 @@ export default function AuditPage() {
   const [tab, setTab] = useState<"logins" | "admin">("logins")
   const [from, setFrom] = useState("")
   const [to, setTo] = useState("")
+  // 维度过滤(#23):server 侧契约已支持——登录日志 userName/succeeded,管理日志 actor/action,
+  // BFF 本就透传 query,这里纯前端接线。
+  const [userName, setUserName] = useState("")
+  const [succeeded, setSucceeded] = useState("")
+  const [actor, setActor] = useState("")
+  const [action, setAction] = useState("")
   const [page, setPage] = useState(1)
   const [logins, setLogins] = useState<PageResult<LoginLogEntry> | null>(null)
   const [admin, setAdmin] = useState<PageResult<AdminAuditEntry> | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // 时间过滤输入即触发：用序号丢弃乱序返回的旧响应，避免表格闪回旧过滤条件的结果。
+  // 时间/过滤输入即触发:用序号丢弃乱序返回的旧响应,避免表格闪回旧过滤条件的结果。
   const loadSeq = useRef(0)
   const pageSize = 20
 
@@ -29,16 +35,20 @@ export default function AuditPage() {
       if (from) params.set("from", new Date(from).toISOString())
       if (to) params.set("to", new Date(to).toISOString())
       if (tab === "logins") {
+        if (userName.trim()) params.set("userName", userName.trim())
+        if (succeeded) params.set("succeeded", succeeded)
         const data = await apiGet<PageResult<LoginLogEntry>>(`/admin/api/audit/logins?${params}`)
         if (seq === loadSeq.current) setLogins(data)
       } else {
+        if (actor.trim()) params.set("actor", actor.trim())
+        if (action.trim()) params.set("action", action.trim())
         const data = await apiGet<PageResult<AdminAuditEntry>>(`/admin/api/audit/admin?${params}`)
         if (seq === loadSeq.current) setAdmin(data)
       }
     } catch (cause) {
       if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : "加载失败")
     }
-  }, [tab, page, from, to])
+  }, [tab, page, from, to, userName, succeeded, actor, action])
 
   useEffect(() => {
     void load()
@@ -83,7 +93,7 @@ export default function AuditPage() {
           />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="to">止</Label>
+          <Label htmlFor="to">止（本地时区）</Label>
           <Input
             id="to"
             type="datetime-local"
@@ -95,6 +105,68 @@ export default function AuditPage() {
             }}
           />
         </div>
+        {tab === "logins" ? (
+          <>
+            <div className="grid gap-1.5">
+              <Label htmlFor="audit-user">用户</Label>
+              <Input
+                id="audit-user"
+                className="w-44"
+                value={userName}
+                onChange={(event) => {
+                  setPage(1)
+                  setUserName(event.target.value)
+                }}
+                placeholder="用户名"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="audit-succeeded">结果</Label>
+              <select
+                id="audit-succeeded"
+                className="h-9 rounded-md border bg-background px-3 text-sm"
+                value={succeeded}
+                onChange={(event) => {
+                  setPage(1)
+                  setSucceeded(event.target.value)
+                }}
+              >
+                <option value="">全部</option>
+                <option value="true">成功</option>
+                <option value="false">失败</option>
+              </select>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="grid gap-1.5">
+              <Label htmlFor="audit-actor">操作者</Label>
+              <Input
+                id="audit-actor"
+                className="w-44"
+                value={actor}
+                onChange={(event) => {
+                  setPage(1)
+                  setActor(event.target.value)
+                }}
+                placeholder="操作者用户名"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="audit-action">动作</Label>
+              <Input
+                id="audit-action"
+                className="w-44"
+                value={action}
+                onChange={(event) => {
+                  setPage(1)
+                  setAction(event.target.value)
+                }}
+                placeholder="如 user.freeze"
+              />
+            </div>
+          </>
+        )}
         {result && <span className="pb-2 text-sm text-muted-foreground">共 {result.total} 条</span>}
       </div>
 

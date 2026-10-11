@@ -306,7 +306,10 @@ var antiforgery = app.Services.GetRequiredService<IAntiforgery>();
 // 否则系统性故障（IDP 宕机/授权被拒/凭据失效）下用户在 admin↔IDP 之间 302 打转
 // 直到触发限流 429，全程没有任何提示。这是 BFF 路由，天然先于 SPA 回退生效；
 // 错误码经 LoginError 白名单折算、文案全部出自固定映射，不回显 IDP 原文。
-app.MapGet("/admin/login", (string? returnUrl, string? error) =>
+// 挑战路径为 /admin/challenge:/admin/login 现由品牌登录页(SPA 回退)承载。错误页的重试链接
+// 指向 /admin/login?returnUrl=…,登录页对带 returnUrl 的到达自动发起挑战(见 frontend login.tsx),
+// 挑战-失败-错误页的循环每次仍需一次显式点击,与限流分区共同兜住系统性故障。
+app.MapGet("/admin/challenge", (string? returnUrl, string? error) =>
 {
     if (!string.IsNullOrEmpty(error))
     {

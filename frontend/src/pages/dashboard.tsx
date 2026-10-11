@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react"
+import { Link } from "react-router-dom"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { apiGet, type Session } from "@/lib/api"
+import { NAV } from "@/lib/nav"
 
 /** OIDC discovery 的常用子集（公网同源端点 /.well-known/openid-configuration，无凭据）。 */
 type Discovery = {
@@ -18,12 +20,8 @@ type Discovery = {
   code_challenge_methods_supported?: string[]
 }
 
-/** 管理模块能力说明（首页预告卡）。 */
-const MODULES = [
-  { id: "users", label: "用户管理", desc: "建号 / 角色 / 冻结 / 解锁 / 资料 / 2FA / 注销 / 重置密码" },
-  { id: "clients", label: "客户端管理", desc: "回调白名单 / scope / 密钥轮换" },
-  { id: "audit", label: "审计查询", desc: "登录日志与管理操作日志（只读）" },
-] as const
+// 管理模块卡直接取 lib/nav.ts 单一事实源(此前与侧边栏两份手抄已漂移:#24),概览自身除外。
+const MODULES = NAV.filter((item) => item.to !== "/")
 
 /**
  * 管理后台概览：登录闭环 + 真实身份与 IDP 状态；外壳（侧边栏/顶栏/登出）在 AppShell。
@@ -150,18 +148,22 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* 管理模块预告：与侧边栏同源定义 */}
+      {/* 管理模块卡:与侧边栏同源(lib/nav.ts),可点击直达。 */}
       <Card>
         <CardHeader>
           <CardTitle className="text-sm">管理模块</CardTitle>
-          <CardDescription>点击侧边栏进入对应模块；全部变更操作均记录管理审计</CardDescription>
+          <CardDescription>点击卡片进入对应模块；全部变更操作均记录管理审计</CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-3">
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {MODULES.map((module) => (
-            <div key={module.id} className="rounded-lg border bg-muted/20 p-4">
+            <Link
+              key={module.to}
+              to={module.to}
+              className="rounded-lg border bg-muted/20 p-4 transition-colors hover:border-primary/40 hover:bg-muted/40"
+            >
               <p className="text-sm font-medium">{module.label}</p>
               <p className="mt-1 text-xs text-muted-foreground">{module.desc}</p>
-            </div>
+            </Link>
           ))}
         </CardContent>
       </Card>
