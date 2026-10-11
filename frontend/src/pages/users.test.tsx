@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react"
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router-dom"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -72,5 +72,35 @@ describe("UsersPage detail ordering", () => {
 
     expect(screen.queryByText("账号详情 · alice")).not.toBeInTheDocument()
     expect(screen.getByText("账号详情 · bob")).toBeInTheDocument()
+  })
+})
+
+describe("UsersPage revoke tokens", () => {
+  it("confirms via AlertDialog then calls revoke-tokens", async () => {
+    // 注意:getSession 的模块级缓存使本文件第二个测试复用第一个测试的会话响应。
+    const fetchMock = vi.fn((path: string) => {
+      if (path.startsWith("/admin/api/users?")) return Promise.resolve(json(list))
+      if (path === "/admin/api/users/u-1") return Promise.resolve(json(detail("u-1", "alice")))
+      if (path === "/admin/api/users/u-1/claims") return Promise.resolve(json([]))
+      if (path === "/admin/api/antiforgery") return Promise.resolve(json({ token: "csrf-token" }))
+      if (path === "/admin/api/users/u-1/revoke-tokens") return Promise.resolve(json(detail("u-1", "alice")))
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const user = userEvent.setup()
+
+    render(<MemoryRouter><UsersPage /></MemoryRouter>)
+    await user.click(await screen.findByText("alice"))
+    await user.click(await screen.findByRole("button", { name: "下线全部会话" }))
+
+    // #30:先弹确认,不直接发请求。
+    expect(await screen.findByRole("alertdialog")).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([p]) => p === "/admin/api/users/u-1/revoke-tokens")).toBe(false)
+
+    await user.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "下线全部会话" }))
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([p]) => p === "/admin/api/users/u-1/revoke-tokens")).toBe(true),
+    )
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
   })
 })
