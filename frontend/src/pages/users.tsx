@@ -146,12 +146,20 @@ export default function UsersPage() {
     getSession().then(setMe).catch(() => setMe(null))
   }, [])
 
+  // 搜索防抖(#30):URL 即时反映输入(可分享/可回退),列表请求按 300ms 防抖——
+  // 大表逐键打后端此前是既知浪费;翻页/排序等显式动作不经过本防抖。
+  const [debouncedQuery, setDebouncedQuery] = useState(query)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300)
+    return () => clearTimeout(timer)
+  }, [query])
+
   const load = useCallback(async () => {
     const seq = ++loadSeq.current
     try {
       setError(null)
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
-      if (query.trim()) params.set("query", query.trim())
+      if (debouncedQuery.trim()) params.set("query", debouncedQuery.trim())
       if (status) params.set("status", status)
       // 服务端排序(#31):键来自表头按钮白名单,直接进参数。
       if (sort) params.set("orderBy", sort)
@@ -161,7 +169,7 @@ export default function UsersPage() {
     } catch (cause) {
       if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : "加载失败")
     }
-  }, [page, query, status, sort, dir])
+  }, [page, debouncedQuery, status, sort, dir])
 
   // 会话面板独立加载:失败不影响详情主体(与详情/claims 的 Promise.all 分离)。
   const loadSessions = useCallback(async (id: string) => {
