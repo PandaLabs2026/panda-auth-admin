@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  serverError,
   REGISTER_CHANNEL,
   USER_STATUS,
   apiGet,
@@ -169,7 +170,7 @@ export default function UsersPage() {
       const data = await apiGet<PageResult<UserSummary>>(`/admin/api/users?${params}`)
       if (seq === loadSeq.current) setResult(data)
     } catch (cause) {
-      if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : "加载失败")
+      if (seq === loadSeq.current) setError(serverError(cause))
     }
   }, [page, debouncedQuery, status, sort, dir])
 
@@ -180,7 +181,7 @@ export default function UsersPage() {
       const data = await apiGet<AdminUserSession[]>(`/admin/api/users/${id}/sessions`)
       setSessions(data)
     } catch (cause) {
-      setSessionsError(cause instanceof Error ? cause.message : "会话加载失败")
+      setSessionsError(serverError(cause))
     }
   }, [])
 
@@ -225,7 +226,7 @@ export default function UsersPage() {
         setEditingProfile(true)
       }
     } catch (cause) {
-      if (seq === detailSeq.current) setError(cause instanceof Error ? cause.message : "详情加载失败")
+      if (seq === detailSeq.current) setError(serverError(cause))
     }
   }, [])
 
@@ -270,7 +271,7 @@ export default function UsersPage() {
       setClaims((items) => [...items, created])
       setClaimDraft({ claimType: "panda:", claimValue: "", scope: "api" })
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "添加 Claim 失败")
+      setError(serverError(cause))
     } finally {
       setClaimsBusy(false)
     }
@@ -284,7 +285,7 @@ export default function UsersPage() {
       await apiSend("DELETE", `/admin/api/users/${detail.id}/claims/${claim.id}`)
       setClaims((items) => items.filter((item) => item.id !== claim.id))
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "删除 Claim 失败")
+      setError(serverError(cause))
     } finally {
       setClaimsBusy(false)
     }
@@ -313,7 +314,7 @@ export default function UsersPage() {
       if (response.password) setNewPassword(response.password)
       await load()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "建号失败")
+      setError(serverError(cause))
     } finally {
       setBusy(false)
     }
@@ -328,7 +329,7 @@ export default function UsersPage() {
       if (detail?.id === user.id) await openDetail(user.id)
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t(verb === "冻结" ? "冻结失败" : "解冻失败"))
+      setError(serverError(cause) || t(verb === "冻结" ? "冻结失败" : "解冻失败"))
     } finally {
       setBusy(false)
     }
@@ -341,7 +342,7 @@ export default function UsersPage() {
       setNewPassword(response.password)
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "重置失败")
+      setError(serverError(cause))
     } finally {
       setBusy(false)
     }
@@ -356,7 +357,7 @@ export default function UsersPage() {
       setDetail(await apiSend<UserDetail>("PUT", `/admin/api/users/${user.id}/roles`, { roles }))
       await load()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t(granting ? "授予管理员角色失败" : "移除管理员角色失败"))
+      setError(serverError(cause) || t(granting ? "授予管理员角色失败" : "移除管理员角色失败"))
     } finally {
       setBusy(false)
     }
@@ -369,7 +370,7 @@ export default function UsersPage() {
       setDetail(await apiSend<UserDetail>("POST", `/admin/api/users/${user.id}/unlock`, {}))
       await load()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "解锁失败")
+      setError(serverError(cause))
     } finally {
       setBusy(false)
     }
@@ -382,7 +383,7 @@ export default function UsersPage() {
       setDetail(await apiSend<UserDetail>("POST", `/admin/api/users/${user.id}/reset-2fa`, {}))
       await load()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "重置两步验证失败")
+      setError(serverError(cause))
     } finally {
       setBusy(false)
     }
@@ -396,7 +397,7 @@ export default function UsersPage() {
       setDetail(await apiSend<UserDetail>("POST", `/admin/api/users/${user.id}/revoke-tokens`, {}))
       await load()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "下线失败")
+      setError(serverError(cause))
     } finally {
       setBusy(false)
     }
@@ -422,7 +423,7 @@ export default function UsersPage() {
       setEditingProfile(false)
       await load()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "资料保存失败")
+      setError(serverError(cause))
     } finally {
       setBusy(false)
     }
@@ -438,7 +439,7 @@ export default function UsersPage() {
       await load()
       await openDetail(user.id)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "注销失败")
+      setError(serverError(cause))
     } finally {
       setBusy(false)
     }

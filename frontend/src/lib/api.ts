@@ -6,7 +6,31 @@
  */
 
 /** MFA 门禁标记响应头：BFF 代理在上游 403 响应体带 mfaRequired 标记时附加（见 AdminApiProxy）。 */
+import i18n from "@/i18n"
+
 const MFA_REQUIRED_HEADER = "X-Panda-Mfa-Required"
+
+/**
+ * 带服务端稳定错误码的 API 错误(ADR 2026-10-11-admin-error-codes):
+ * code 存在时渲染层经 t(`server.${code}`, { defaultValue: message }) 走 i18n;
+ * message 始终是服务端原文(zh),未登记站点/未知码直接显示 message。
+ */
+export class ApiError extends Error {
+  readonly code?: string
+
+  constructor(message: string, code?: string) {
+    super(message)
+    this.name = "ApiError"
+    this.code = code
+  }
+}
+
+/** 错误渲染:有码走 i18n(server.* 命名空间,en 资源),无码/未知码显示原文。 */
+export function serverError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "加载失败"
+  const code = error instanceof ApiError ? error.code : undefined
+  return code ? i18n.t(`server.${code}`, { defaultValue: message }) : message
+}
 
 async function fetchAntiforgeryToken(): Promise<string> {
   const response = await fetch("/admin/api/antiforgery", { headers: { "X-Requested-With": "XMLHttpRequest" } })
@@ -66,13 +90,21 @@ export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string
   if (!response.ok) {
     // 非 ProblemDetails 的失败(裸 5xx、代理故障等)折算人话文案,不把原始状态码甩给用户。
     let detail = `请求失败(HTTP ${response.status})`
+    let code: string | undefined
     try {
-      const problem = (await response.json()) as { detail?: string; title?: string }
+      const problem = (await response.json()) as {
+        detail?: string
+        title?: string
+        extensions?: { code?: string }
+      }
       detail = problem.detail ?? problem.title ?? detail
+      // 服务端稳定错误码(ADR 2026-10-11-admin-error-codes):渲染层据此走 i18n,
+      // 未知码降级显示 detail(现状行为)。
+      code = typeof problem.extensions?.code === "string" ? problem.extensions.code : undefined
     } catch {
       /* 保留状态码文案 */
     }
-    throw new Error(detail)
+    throw new ApiError(detail, code)
   }
   if (response.status === 204) return undefined as T
   // 与 apiGet 同款守卫：会话过期时防伪端点匿名可用（发令牌无需登录），随后的变更请求
