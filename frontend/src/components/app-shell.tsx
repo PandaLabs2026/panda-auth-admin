@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
 import { Menu, X } from "lucide-react"
+import { useTranslation } from "react-i18next"
 import { type Session } from "@/lib/api"
 import { NAV, NAV_TITLES } from "@/lib/nav"
 import { getSession } from "@/lib/session"
@@ -38,8 +39,9 @@ async function logout() {
  * 进入子模块后侧边栏整体消失，2026-09-19 生产走查发现）。
  */
 export default function AppShell() {
+  const { t } = useTranslation()
   const { pathname } = useLocation()
-  const title = NAV_TITLES[pathname] ?? "管理后台"
+  const title = t(NAV_TITLES[pathname] ?? "管理后台")
   const [session, setSession] = useState<Session | null>(null)
   // 移动端抽屉:<768px 侧边栏隐藏,此前无任何导航入口,用户被困在落地页(#22)。
   const [navOpen, setNavOpen] = useState(false)
@@ -85,7 +87,7 @@ export default function AppShell() {
             }`
           }
         >
-          {item.label}
+          {t(item.label)}
         </NavLink>
       ))}
     </nav>
@@ -93,7 +95,7 @@ export default function AppShell() {
 
   const portalLink = session?.portalHomeUrl && (
     <a href={session.portalHomeUrl} className="mb-1 block rounded-md px-1 py-1 text-muted-foreground hover:text-primary">
-      返回熊猫门户
+      {t("返回熊猫门户")}
     </a>
   )
 
@@ -104,20 +106,20 @@ export default function AppShell() {
         {navLinks}
         <div className="border-t px-5 py-3 text-xs">
           {portalLink}
-          <p className="text-muted-foreground">v{__APP_VERSION__} · 管理后台</p>
+          <p className="text-muted-foreground">{t("v{{version}} · 管理后台", { version: __APP_VERSION__ })}</p>
         </div>
       </aside>
 
       {/* 移动端抽屉:点链接/Esc/遮罩关闭;打开期间锁页面滚动。 */}
       {navOpen && (
-        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label="导航菜单">
+        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label={t("导航菜单")}>
           <div className="absolute inset-0 bg-black/50" onClick={() => setNavOpen(false)} />
           <aside className="absolute inset-y-0 left-0 flex w-64 flex-col border-r bg-card shadow-xl">
             <div className="flex items-center justify-between pr-3">
               {brand}
               <button
                 type="button"
-                aria-label="关闭导航"
+                aria-label={t("关闭导航")}
                 className="rounded-md p-2 text-muted-foreground hover:bg-muted"
                 onClick={() => setNavOpen(false)}
               >
@@ -135,7 +137,7 @@ export default function AppShell() {
                 </p>
               )}
               {portalLink}
-              <p className="text-muted-foreground">v{__APP_VERSION__} · 管理后台</p>
+              <p className="text-muted-foreground">{t("v{{version}} · 管理后台", { version: __APP_VERSION__ })}</p>
             </div>
           </aside>
         </div>
@@ -147,7 +149,7 @@ export default function AppShell() {
             <button
               type="button"
               aria-expanded={navOpen}
-              aria-label="打开导航"
+              aria-label={t("打开导航")}
               className="rounded-md p-2 text-muted-foreground hover:bg-muted md:hidden"
               onClick={() => setNavOpen(true)}
             >
@@ -172,10 +174,10 @@ export default function AppShell() {
               </span>
             )}
             <Button variant="outline" size="sm" onClick={() => window.location.assign("/account/change-password?returnUrl=/admin")}>
-              修改密码
+              {t("修改密码")}
             </Button>
             <Button variant="outline" size="sm" onClick={logout}>
-              退出登录
+              {t("退出登录")}
             </Button>
           </div>
         </header>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { useSearchParams } from "react-router-dom"
+import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -20,6 +21,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
  * fetch 不跟随跨站表单/重定向链,全页导航是唯一正确形态(me 仓同款)。
  */
 export default function LoginPage() {
+  const { t } = useTranslation()
   const [searchParams] = useSearchParams()
   // returnUrl 原样透传:消费点是 BFF 挑战端点的 LoginReturnUrl 白名单,
   // 前端不做二次校验(校验语义只有一处,服务端兜住全部入口)。
@@ -53,24 +55,24 @@ export default function LoginPage() {
             PandaAuth
           </p>
           <p className="mt-3 max-w-md text-sm opacity-90">
-            熊猫实验室统一身份认证中台。一次登录，全生态通行。
+            {t("熊猫实验室统一身份认证中台。一次登录，全生态通行。")}
           </p>
         </div>
       </aside>
       <main className="flex flex-1 items-center justify-center bg-background p-6">
         <Card className="w-full max-w-sm">
           <CardHeader>
-            <CardTitle className="text-lg text-primary">管理后台登录</CardTitle>
-            <CardDescription>仅限熊猫实验室管理员，使用 PandaAuth 账号登录。</CardDescription>
+            <CardTitle className="text-lg text-primary">{t("管理后台登录")}</CardTitle>
+            <CardDescription>{t("仅限熊猫实验室管理员，使用 PandaAuth 账号登录。")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
             {hasError && (
               <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                登录未完成，请重试；若持续出现请联系管理员。
+                {t("登录未完成，请重试；若持续出现请联系管理员。")}
               </p>
             )}
             <Button className="w-full" disabled={leaving} onClick={startLogin}>
-              {leaving ? "正在前往登录…" : "使用 PandaAuth 登录"}
+              {leaving ? t("正在前往登录…") : t("使用 PandaAuth 登录")}
             </Button>
           </CardContent>
         </Card>

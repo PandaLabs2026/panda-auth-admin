@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
@@ -90,6 +91,7 @@ type PendingConfirm =
  * MFA step-up 返回后自动恢复,不自动重放。
  */
 export default function UsersPage() {
+  const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
 
   // ---- URL 状态(#27):q/status/page/user 是唯一事实源;sort/dir 服务端排序(#31) ----
@@ -256,7 +258,7 @@ export default function UsersPage() {
       scope: claimDraft.scope.trim(),
     }
     if (!request.claimType || !request.claimValue || !request.scope) {
-      setError("Claim 类型、值和 scope 均不能为空")
+      setError(t("Claim 类型、值和 scope 均不能为空"))
       return
     }
     setClaimsBusy(true)
@@ -290,7 +292,7 @@ export default function UsersPage() {
 
   async function submitCreate() {
     if (!draft.userName.trim()) {
-      setError("用户名不能为空")
+      setError(t("用户名不能为空"))
       return
     }
     setBusy(true)
@@ -326,7 +328,7 @@ export default function UsersPage() {
       if (detail?.id === user.id) await openDetail(user.id)
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : `${verb}失败`)
+      setError(cause instanceof Error ? cause.message : t(verb === "冻结" ? "冻结失败" : "解冻失败"))
     } finally {
       setBusy(false)
     }
@@ -347,7 +349,6 @@ export default function UsersPage() {
 
   async function toggleAdminRole(user: UserDetail) {
     const granting = !user.roles.includes(ADMIN_ROLE)
-    const verb = granting ? "授予" : "移除"
     setBusy(true)
     try {
       setError(null)
@@ -355,7 +356,7 @@ export default function UsersPage() {
       setDetail(await apiSend<UserDetail>("PUT", `/admin/api/users/${user.id}/roles`, { roles }))
       await load()
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : `${verb}管理员角色失败`)
+      setError(cause instanceof Error ? cause.message : t(granting ? "授予管理员角色失败" : "移除管理员角色失败"))
     } finally {
       setBusy(false)
     }
@@ -472,62 +473,77 @@ export default function UsersPage() {
   // 确认对话框文案(单一来源,渲染见文件尾部的 AlertDialog)。
   const confirmCopy = confirming
     ? confirming.kind === "freeze"
-      ? {
-          title: `${confirming.user.status === 1 ? "解冻" : "冻结"}用户 ${confirming.user.userName}？`,
-          description:
-            confirming.user.status === 1
-              ? "解冻后账号可正常登录。"
-              : "其全部登录令牌将立即失效。",
-          actionText: confirming.user.status === 1 ? "解冻" : "冻结",
-        }
+      ? confirming.user.status === 1
+        ? {
+            title: t("解冻用户 {{name}}？", { name: confirming.user.userName }),
+            description: t("解冻后账号可正常登录。"),
+            actionText: t("解冻"),
+          }
+        : {
+            title: t("冻结用户 {{name}}？", { name: confirming.user.userName }),
+            description: t("其全部登录令牌将立即失效。"),
+            actionText: t("冻结"),
+          }
       : confirming.kind === "reset-password"
         ? {
-            title: `为用户 ${confirming.user.userName} 生成新密码？`,
-            description: "当前密码将失效，其所有会话将被强制下线。新密码仅显示一次。",
-            actionText: "生成新密码",
+            title: t("为用户 {{name}} 生成新密码？", { name: confirming.user.userName }),
+            description: t("当前密码将失效，其所有会话将被强制下线。新密码仅显示一次。"),
+            actionText: t("生成新密码"),
           }
         : confirming.kind === "roles"
-          ? {
-              title: `${confirming.user.roles.includes(ADMIN_ROLE) ? "移除" : "授予"}用户 ${confirming.user.userName} 的管理员角色？`,
-              description: "变更将吊销其全部令牌（立即生效）。",
-              actionText: confirming.user.roles.includes(ADMIN_ROLE) ? "移除管理员" : "设为管理员",
-            }
-          : confirming.kind === "unlock"
+          ? confirming.user.roles.includes(ADMIN_ROLE)
             ? {
-                title: `解锁用户 ${confirming.user.userName}？`,
-                description: "将清除临时锁定与连续失败计数。",
-                actionText: "解锁",
-              }
-        : confirming.kind === "reset-2fa"
-          ? {
-              title: `重置用户 ${confirming.user.userName} 的两步验证？`,
-              description: `将关闭 2FA 并吊销其全部令牌（该账号会被强制下线${confirming.user.id === me?.subject ? "，包括你当前的管理台会话" : ""}）。`,
-              actionText: "重置两步验证",
-            }
-          : confirming.kind === "revoke-tokens"
-            ? {
-                title: `将用户 ${confirming.user.userName} 的全部会话下线？`,
-                description: "仅吊销其全部令牌（立即生效），账号状态与凭据不变；该用户需重新登录才能再访问。",
-                actionText: "下线全部会话",
+                title: t("移除用户 {{name}} 的管理员角色？", { name: confirming.user.userName }),
+                description: t("变更将吊销其全部令牌（立即生效）。"),
+                actionText: t("移除管理员"),
               }
             : {
-                title: `删除 Claim ${confirming.claim.claimType}？`,
-                description: "删除后即刻生效；添加和删除 Claim 都会记录管理审计。",
-                actionText: "删除",
+                title: t("授予用户 {{name}} 的管理员角色？", { name: confirming.user.userName }),
+                description: t("变更将吊销其全部令牌（立即生效）。"),
+                actionText: t("设为管理员"),
               }
+          : confirming.kind === "unlock"
+            ? {
+                title: t("解锁用户 {{name}}？", { name: confirming.user.userName }),
+                description: t("将清除临时锁定与连续失败计数。"),
+                actionText: t("解锁"),
+              }
+            : confirming.kind === "reset-2fa"
+              ? confirming.user.id === me?.subject
+                ? {
+                    title: t("重置用户 {{name}} 的两步验证？", { name: confirming.user.userName }),
+                    description: t("将关闭 2FA 并吊销其全部令牌（该账号会被强制下线，包括你当前的管理台会话）。"),
+                    actionText: t("重置两步验证"),
+                  }
+                : {
+                    title: t("重置用户 {{name}} 的两步验证？", { name: confirming.user.userName }),
+                    description: t("将关闭 2FA 并吊销其全部令牌（该账号会被强制下线）。"),
+                    actionText: t("重置两步验证"),
+                  }
+              : confirming.kind === "revoke-tokens"
+                ? {
+                    title: t("将用户 {{name}} 的全部会话下线？", { name: confirming.user.userName }),
+                    description: t("仅吊销其全部令牌（立即生效），账号状态与凭据不变；该用户需重新登录才能再访问。"),
+                    actionText: t("下线全部会话"),
+                  }
+                : {
+                    title: t("删除 Claim {{type}}？", { type: confirming.claim.claimType }),
+                    description: t("删除后即刻生效；添加和删除 Claim 都会记录管理审计。"),
+                    actionText: t("删除"),
+                  }
     : null
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-3">
         <div className="grid gap-1.5">
-          <Label htmlFor="query">搜索（用户名 / 邮箱）</Label>
+          <Label htmlFor="query">{t("搜索（用户名 / 邮箱）")}</Label>
           <Input
             id="query"
             className="w-64"
             value={query}
             onChange={(event) => updateParams({ q: event.target.value, page: null }, { replace: true })}
-            placeholder="输入即搜索"
+            placeholder={t("输入即搜索")}
           />
         </div>
         <div className="grid gap-1.5">
@@ -540,17 +556,17 @@ export default function UsersPage() {
               <SelectValue placeholder="全部" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部</SelectItem>
-              <SelectItem value="0">正常</SelectItem>
-              <SelectItem value="1">已冻结</SelectItem>
-              <SelectItem value="2">已注销</SelectItem>
+              <SelectItem value="all">{t("全部")}</SelectItem>
+              <SelectItem value="0">{t("正常")}</SelectItem>
+              <SelectItem value="1">{t("已冻结")}</SelectItem>
+              <SelectItem value="2">{t("已注销")}</SelectItem>
             </SelectContent>
           </Select>
         </div>
-        {result && <span className="pb-2 text-sm text-muted-foreground">共 {result.total} 个账号</span>}
+        {result && <span className="pb-2 text-sm text-muted-foreground">{t("共 {{total}} 个账号", { total: result.total })}</span>}
         <div className="ml-auto pb-2">
           <Button onClick={() => setCreating((value) => !value)} variant={creating ? "outline" : "default"}>
-            {creating ? "收起建号表单" : "新建用户"}
+            {creating ? t("收起建号表单") : t("新建用户")}
           </Button>
         </div>
       </div>
@@ -567,26 +583,26 @@ export default function UsersPage() {
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2">
             <div className="grid gap-1.5">
-              <Label htmlFor="create-userName">用户名 *</Label>
+              <Label htmlFor="create-userName">{t("用户名 *")}</Label>
               <Input
                 id="create-userName"
                 value={draft.userName}
                 onChange={(event) => setDraft({ ...draft, userName: event.target.value })}
-                placeholder="登录名"
+                placeholder={t("登录名")}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="create-email">邮箱</Label>
+              <Label htmlFor="create-email">{t("邮箱")}</Label>
               <Input
                 id="create-email"
                 type="email"
                 value={draft.email}
                 onChange={(event) => setDraft({ ...draft, email: event.target.value })}
-                placeholder="user@example.com（可留空）"
+                placeholder={t("user@example.com（可留空）")}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="create-nickname">昵称</Label>
+              <Label htmlFor="create-nickname">{t("昵称")}</Label>
               <Input
                 id="create-nickname"
                 value={draft.nickname}
@@ -594,22 +610,22 @@ export default function UsersPage() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="create-region">区域</Label>
+              <Label htmlFor="create-region">{t("区域")}</Label>
               <Input
                 id="create-region"
                 value={draft.region}
                 onChange={(event) => setDraft({ ...draft, region: event.target.value })}
-                placeholder="如 cn-sh（可留空）"
+                placeholder={t("如 cn-sh（可留空）")}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="create-password">初始密码</Label>
+              <Label htmlFor="create-password">{t("初始密码")}</Label>
               <Input
                 id="create-password"
                 type="text"
                 value={draft.password}
                 onChange={(event) => setDraft({ ...draft, password: event.target.value })}
-                placeholder="留空自动生成"
+                placeholder={t("留空自动生成")}
               />
             </div>
             <label className="flex items-center gap-2 self-end text-sm">
@@ -617,7 +633,7 @@ export default function UsersPage() {
                 checked={draft.grantAdminRole}
                 onCheckedChange={(checked) => setDraft({ ...draft, grantAdminRole: checked === true })}
               />
-              创建后授予管理员角色
+              {t("创建后授予管理员角色")}
             </label>
             <div className="flex gap-2 sm:col-span-2">
               <Button disabled={busy || !draft.userName.trim()} onClick={() => void submitCreate()}>
@@ -631,7 +647,7 @@ export default function UsersPage() {
                   setDraft(EMPTY_CREATE)
                 }}
               >
-                取消
+                {t("取消")}
               </Button>
             </div>
           </CardContent>
@@ -645,21 +661,21 @@ export default function UsersPage() {
               <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                 <th className="px-4 py-3 font-medium">
                   <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("userName")}>
-                    用户名{sort === "userName" ? (dir === "asc" ? " ↑" : " ↓") : ""}
+                    {t("用户名")}{sort === "userName" ? (dir === "asc" ? " ↑" : " ↓") : ""}
                   </button>
                 </th>
                 <th className="px-4 py-3 font-medium">
                   <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("email")}>
-                    邮箱{sort === "email" ? (dir === "asc" ? " ↑" : " ↓") : ""}
+                    {t("邮箱")}{sort === "email" ? (dir === "asc" ? " ↑" : " ↓") : ""}
                   </button>
                 </th>
-                <th className="px-4 py-3 font-medium">状态</th>
+                <th className="px-4 py-3 font-medium">{t("状态")}</th>
                 <th className="px-4 py-3 font-medium">
                   <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("createdAt")}>
-                    注册时间{sort === "createdAt" ? (dir === "asc" ? " ↑" : " ↓") : ""}
+                    {t("注册时间")}{sort === "createdAt" ? (dir === "asc" ? " ↑" : " ↓") : ""}
                   </button>
                 </th>
-                <th className="px-4 py-3 font-medium text-right">操作</th>
+                <th className="px-4 py-3 font-medium text-right">{t("操作")}</th>
               </tr>
             </thead>
             <tbody>
@@ -683,7 +699,7 @@ export default function UsersPage() {
                             : "rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
                       }
                     >
-                      {USER_STATUS[user.status] ?? user.status}
+                      {t(USER_STATUS[user.status] ?? String(user.status))}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{new Date(user.createdAt).toLocaleString("zh-CN")}</td>
@@ -698,7 +714,7 @@ export default function UsersPage() {
                           disabled={busy}
                           onClick={() => setConfirming({ kind: "freeze", user })}
                         >
-                          {user.status === 1 ? "解冻" : "冻结"}
+                          {user.status === 1 ? t("解冻") : t("冻结")}
                         </Button>
                         <Button
                           variant="outline"
@@ -706,7 +722,7 @@ export default function UsersPage() {
                           disabled={busy}
                           onClick={() => setConfirming({ kind: "reset-password", user })}
                         >
-                          重置密码
+                          {t("重置密码")}
                         </Button>
                       </>
                     )}
@@ -717,14 +733,14 @@ export default function UsersPage() {
               {!result && !error && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                    正在加载…
+                    {t("正在加载…")}
                   </td>
                 </tr>
               )}
               {result && result.items.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                    没有匹配的账号
+                    {t("没有匹配的账号")}
                   </td>
                 </tr>
               )}
@@ -735,7 +751,7 @@ export default function UsersPage() {
 
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">
-          第 {page} / {totalPages} 页
+          {t("第 {{page}} / {{totalPages}} 页", { page, totalPages })}
         </span>
         <div className="space-x-2">
           <Button
@@ -752,7 +768,7 @@ export default function UsersPage() {
             disabled={page >= totalPages}
             onClick={() => updateParams({ page: String(page + 1) })}
           >
-            下一页
+            {t("下一页")}
           </Button>
         </div>
       </div>
@@ -764,13 +780,13 @@ export default function UsersPage() {
         }}>
           <Card className="border-amber-300 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/50">
             <CardHeader>
-              <CardTitle className="text-sm text-amber-800 dark:text-amber-300">新密码（仅显示这一次）</CardTitle>
-              <CardDescription>请立即复制并安全送达用户；服务端只保留哈希，无法再次取出。</CardDescription>
+              <CardTitle className="text-sm text-amber-800 dark:text-amber-300">{t("新密码（仅显示这一次）")}</CardTitle>
+              <CardDescription>{t("请立即复制并安全送达用户；服务端只保留哈希，无法再次取出。")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap items-center gap-3">
               <code className="rounded bg-white px-3 py-2 font-mono text-base dark:bg-muted">{newPassword}</code>
               <Button variant="outline" size="sm" onClick={() => void copyNewPassword()}>
-                {copied ? "已复制" : "复制"}
+                {copied ? t("已复制") : t("复制")}
               </Button>
             </CardContent>
           </Card>
@@ -782,33 +798,33 @@ export default function UsersPage() {
           <CardHeader>
             <div className="flex items-start justify-between">
               <div>
-                <CardTitle className="text-base">账号详情 · {detail.userName}</CardTitle>
+                <CardTitle className="text-base">{t("账号详情 · {{name}}", { name: detail.userName })}</CardTitle>
                 <CardDescription>{detail.email ?? "未绑定邮箱"}</CardDescription>
               </div>
               <Button
                 variant="ghost"
                 size="sm"
-                aria-label="关闭详情"
+                aria-label={t("关闭")}
                 onClick={() => updateParams({ user: null })}
               >
-                关闭
+                {t("关闭")}
               </Button>
             </div>
           </CardHeader>
           <CardContent className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-2">
-            <p>状态：{USER_STATUS[detail.status] ?? detail.status}</p>
-            <p>注册渠道：{REGISTER_CHANNEL[detail.registerChannel] ?? detail.registerChannel}</p>
-            <p>邮箱已验证：{detail.emailConfirmed ? "是" : "否"}</p>
-            <p>两步验证：{detail.twoFactorEnabled ? "已启用" : "未启用"}</p>
-            <p>锁定至：{detail.lockoutEnd ? new Date(detail.lockoutEnd).toLocaleString("zh-CN") : "—"}</p>
-            <p>连续失败：{detail.accessFailedCount} 次</p>
-            <p>创建：{new Date(detail.createdAt).toLocaleString("zh-CN")}</p>
-            <p>更新：{new Date(detail.updatedAt).toLocaleString("zh-CN")}</p>
+            <p>{t("状态：{{status}}", { status: t(USER_STATUS[detail.status] ?? String(detail.status)) })}</p>
+            <p>{t("注册渠道：{{channel}}", { channel: t(REGISTER_CHANNEL[detail.registerChannel] ?? String(detail.registerChannel)) })}</p>
+            <p>{t("邮箱已验证：{{v}}", { v: t(detail.emailConfirmed ? "是" : "否") })}</p>
+            <p>{t("两步验证：{{v}}", { v: t(detail.twoFactorEnabled ? "已启用" : "未启用") })}</p>
+            <p>{t("锁定至：{{v}}", { v: detail.lockoutEnd ? new Date(detail.lockoutEnd).toLocaleString("zh-CN") : "—" })}</p>
+            <p>{t("连续失败：{{n}} 次", { n: detail.accessFailedCount })}</p>
+            <p>{t("创建：{{v}}", { v: new Date(detail.createdAt).toLocaleString("zh-CN") })}</p>
+            <p>{t("更新：{{v}}", { v: new Date(detail.updatedAt).toLocaleString("zh-CN") })}</p>
             <p className="sm:col-span-2">
               身份标识：<code className="rounded bg-muted px-1.5 py-0.5 text-xs">{detail.id}</code>
             </p>
             <div className="flex flex-wrap items-center gap-2 sm:col-span-2">
-              <span>角色：</span>
+              <span>{t("角色：")}</span>
               {detail.roles.length > 0 ? (
                 detail.roles.map((role) => (
                   <span key={role} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
@@ -816,7 +832,7 @@ export default function UsersPage() {
                   </span>
                 ))
               ) : (
-                <span>无角色</span>
+                <span>{t("无角色")}</span>
               )}
               {/* 自降级被 server 硬门禁拒绝；已注销（终态）账号拒绝一切变更——两种情况都不展示按钮。 */}
               {detail.status !== 2 && !(detail.id === me?.subject && detail.roles.includes(ADMIN_ROLE)) && (
@@ -826,7 +842,7 @@ export default function UsersPage() {
                   disabled={busy}
                   onClick={() => setConfirming({ kind: "roles", user: detail })}
                 >
-                  {detail.roles.includes(ADMIN_ROLE) ? "移除管理员" : "设为管理员"}
+                  {detail.roles.includes(ADMIN_ROLE) ? t("移除管理员") : t("设为管理员")}
                 </Button>
               )}
             </div>
@@ -834,7 +850,7 @@ export default function UsersPage() {
             {detail.status !== 2 && (
               <div className="flex flex-wrap gap-2 sm:col-span-2">
                 <Button variant="outline" size="sm" onClick={() => openProfileEditor(detail)}>
-                  编辑资料
+                  {t("编辑资料")}
                 </Button>
                 {isLocked(detail) && (
                   <Button
@@ -843,7 +859,7 @@ export default function UsersPage() {
                     disabled={busy}
                     onClick={() => setConfirming({ kind: "unlock", user: detail })}
                   >
-                    解锁
+                    {t("解锁")}
                   </Button>
                 )}
                 {detail.twoFactorEnabled && (
@@ -853,7 +869,7 @@ export default function UsersPage() {
                     disabled={busy}
                     onClick={() => setConfirming({ kind: "reset-2fa", user: detail })}
                   >
-                    重置两步验证
+                    {t("重置两步验证")}
                   </Button>
                 )}
                 {/* 踢下线(#30):对自己隐藏(server 侧硬封禁;自助登出已覆盖)。 */}
@@ -864,7 +880,7 @@ export default function UsersPage() {
                     disabled={busy}
                     onClick={() => setConfirming({ kind: "revoke-tokens", user: detail })}
                   >
-                    下线全部会话
+                    {t("下线全部会话")}
                   </Button>
                 )}
                 {detail.id !== me?.subject && (
@@ -878,7 +894,7 @@ export default function UsersPage() {
                       setDeactivateTarget(detail)
                     }}
                   >
-                    注销账号
+                    {t("注销账号")}
                   </Button>
                 )}
               </div>
@@ -891,22 +907,22 @@ export default function UsersPage() {
       {detail && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">在线会话</CardTitle>
-            <CardDescription>该账号当前有效的登录会话(refresh token);短时访问令牌不在此列。只读视图。</CardDescription>
+            <CardTitle className="text-base">{t("在线会话")}</CardTitle>
+            <CardDescription>{t("该账号当前有效的登录会话(refresh token)；短时访问令牌不在此列。只读视图。")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {sessionsError ? (
               <p className="text-sm text-destructive">{sessionsError}</p>
             ) : sessions === null ? (
-              <p className="text-sm text-muted-foreground">正在加载会话…</p>
+              <p className="text-sm text-muted-foreground">{t("正在加载会话…")}</p>
             ) : sessions.length > 0 ? (
               <div className="overflow-x-auto rounded border">
                 <table className="w-full text-left text-sm">
                   <thead className="bg-muted/50 text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2 font-medium">客户端</th>
-                      <th className="px-3 py-2 font-medium">创建时间</th>
-                      <th className="px-3 py-2 font-medium">过期时间</th>
+                      <th className="px-3 py-2 font-medium">{t("客户端")}</th>
+                      <th className="px-3 py-2 font-medium">{t("创建时间")}</th>
+                      <th className="px-3 py-2 font-medium">{t("过期时间")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -925,7 +941,7 @@ export default function UsersPage() {
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">暂无有效会话。</p>
+              <p className="text-sm text-muted-foreground">{t("暂无有效会话。")}</p>
             )}
             <Button
               variant="outline"
@@ -933,7 +949,7 @@ export default function UsersPage() {
               disabled={sessions === null && sessionsError === null}
               onClick={() => void loadSessions(detail.id)}
             >
-              刷新
+              {t("刷新")}
             </Button>
           </CardContent>
         </Card>
@@ -978,7 +994,7 @@ export default function UsersPage() {
                 保存
               </Button>
               <Button variant="outline" disabled={busy} onClick={() => setEditingProfile(false)}>
-                取消
+                {t("取消")}
               </Button>
             </div>
           </CardContent>
@@ -988,9 +1004,9 @@ export default function UsersPage() {
       {detail && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">自定义 Claims</CardTitle>
+            <CardTitle className="text-base">{t("自定义 Claims")}</CardTitle>
             <CardDescription>
-              仅允许 panda: 命名空间；Claim 只有在客户端申请对应 scope 时才会进入 Token。添加和删除需要近期完成 WebAuthn。
+              {t("仅允许 panda: 命名空间；Claim 只有在客户端申请对应 scope 时才会进入 Token。添加和删除需要近期完成 WebAuthn。")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -999,8 +1015,8 @@ export default function UsersPage() {
                 <table className="w-full text-left text-sm">
                   <thead className="bg-muted/50 text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2 font-medium">类型</th>
-                      <th className="px-3 py-2 font-medium">值</th>
+                      <th className="px-3 py-2 font-medium">{t("类型")}</th>
+                      <th className="px-3 py-2 font-medium">{t("值")}</th>
                       <th className="px-3 py-2 font-medium">Scope</th>
                       <th className="px-3 py-2" />
                     </tr>
@@ -1027,23 +1043,23 @@ export default function UsersPage() {
                 </table>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">暂无自定义 Claims。</p>
+              <p className="text-sm text-muted-foreground">{t("暂无自定义 Claims。")}</p>
             )}
             {detail.status !== 2 && (
               <div className="grid gap-3 sm:grid-cols-[1.2fr_1fr_0.7fr_auto] sm:items-end">
                 <div className="grid gap-1.5">
-                  <Label htmlFor="claim-type">类型</Label>
+                  <Label htmlFor="claim-type">{t("类型")}</Label>
                   <Input id="claim-type" value={claimDraft.claimType} onChange={(event) => setClaimDraft({ ...claimDraft, claimType: event.target.value })} />
                 </div>
                 <div className="grid gap-1.5">
-                  <Label htmlFor="claim-value">值</Label>
+                  <Label htmlFor="claim-value">{t("值")}</Label>
                   <Input id="claim-value" value={claimDraft.claimValue} onChange={(event) => setClaimDraft({ ...claimDraft, claimValue: event.target.value })} />
                 </div>
                 <div className="grid gap-1.5">
                   <Label htmlFor="claim-scope">Scope</Label>
                   <Input id="claim-scope" value={claimDraft.scope} onChange={(event) => setClaimDraft({ ...claimDraft, scope: event.target.value })} />
                 </div>
-                <Button disabled={claimsBusy || busy} onClick={() => void addClaim()}>添加</Button>
+                <Button disabled={claimsBusy || busy} onClick={() => void addClaim()}>{t("添加")}</Button>
               </div>
             )}
           </CardContent>
@@ -1058,7 +1074,7 @@ export default function UsersPage() {
             <AlertDialogDescription>{confirmCopy?.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t("取消")}</AlertDialogCancel>
             <AlertDialogAction onClick={runConfirm}>{confirmCopy?.actionText}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1076,13 +1092,13 @@ export default function UsersPage() {
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>注销账号 {deactivateTarget?.userName}？</DialogTitle>
+            <DialogTitle>{t("注销账号 {{name}}？", { name: deactivateTarget?.userName ?? "" })}</DialogTitle>
             <DialogDescription>
-              注销为不可恢复操作：账号将无法登录、全部会话立即失效，管理台不提供恢复入口。
+              {t("注销为不可恢复操作：账号将无法登录、全部会话立即失效，管理台不提供恢复入口。")}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-1.5">
-            <Label htmlFor="deactivate-confirm">如确认，请原样输入该用户的用户名</Label>
+            <Label htmlFor="deactivate-confirm">{t("如确认，请原样输入该用户的用户名")}</Label>
             <Input
               id="deactivate-confirm"
               value={deactivateInput}
@@ -1093,14 +1109,14 @@ export default function UsersPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeactivateTarget(null)}>
-              取消
+              {t("取消")}
             </Button>
             <Button
               variant="destructive"
               disabled={busy || deactivateTarget === null || deactivateInput !== deactivateTarget.userName}
               onClick={() => deactivateTarget && void deactivate(deactivateTarget)}
             >
-              注销账号
+              {t("注销账号")}
             </Button>
           </DialogFooter>
         </DialogContent>
