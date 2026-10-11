@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
-  apiGet,
-  apiSend,
-  type ClaimRequest,
-  type PageResult,
-  type RoleClaim,
-  type RoleSummary,
-} from "@/lib/api"
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { apiGet, apiSend, type ClaimRequest, type PageResult, type RoleClaim, type RoleSummary } from "@/lib/api"
+import { clearDraft, consumeDraft, saveDraft } from "@/lib/drafts"
 
 const EMPTY_CLAIM: ClaimRequest = { claimType: "panda:", claimValue: "", scope: "api" }
 
@@ -19,21 +24,45 @@ function claimsPath(roleId: string): string {
   return `/admin/api/roles/${encodeURIComponent(roleId)}/claims`
 }
 
-/** 角色目录只读；此页只管理已存在角色的自定义 Claims。 */
+/**
+ * 角色目录只读；此页只管理已存在角色的自定义 Claims。
+ * 搜索/分页/选中角色进 URL(#27);选中角色由 role 参数驱动,参数清空即收起 Claims 面板。
+ * Claim 草稿经 sessionStorage 暂存(#26):添加命中 MFA step-up 后回到同一角色自动恢复。
+ */
 export default function RolesPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const query = searchParams.get("q") ?? ""
+  const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1)
+  const roleId = searchParams.get("role")
+
+  const updateParams = useCallback(
+    (patch: Record<string, string | null>, options?: { replace?: boolean }) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          for (const [key, value] of Object.entries(patch)) {
+            if (value === null || value === "") next.delete(key)
+            else next.set(key, value)
+          }
+          return next
+        },
+        { replace: options?.replace ?? false },
+      )
+    },
+    [setSearchParams],
+  )
+
   const [result, setResult] = useState<PageResult<RoleSummary> | null>(null)
-  const [query, setQuery] = useState("")
-  const [page, setPage] = useState(1)
-  const [selected, setSelected] = useState<RoleSummary | null>(null)
   const [claims, setClaims] = useState<RoleClaim[]>([])
   const [claimDraft, setClaimDraft] = useState<ClaimRequest>(EMPTY_CLAIM)
   const [error, setError] = useState<string | null>(null)
   const [claimsBusy, setClaimsBusy] = useState(false)
   const [claimsLoading, setClaimsLoading] = useState(false)
   const [claimsError, setClaimsError] = useState<string | null>(null)
+  const [claimPendingDelete, setClaimPendingDelete] = useState<RoleClaim | null>(null)
   const loadSeq = useRef(0)
   const claimsSeq = useRef(0)
-  const selectedRef = useRef<RoleSummary | null>(null)
   const pageSize = 20
 
   const load = useCallback(async () => {
@@ -45,11 +74,10 @@ export default function RolesPage() {
       const data = await apiGet<PageResult<RoleSummary>>(`/admin/api/roles?${params}`)
       if (seq !== loadSeq.current) return
       setResult(data)
-      const current = selectedRef.current
-      if (current && !data.items.some((role) => role.id === current.id)) {
+      // 选中的角色从目录里消失(搜索过滤/数据变更):清参数收起面板,旧 Claims 响应作废。
+      if (roleId && !data.items.some((role) => role.id === roleId)) {
         claimsSeq.current++
-        selectedRef.current = null
-        setSelected(null)
+        updateParams({ role: null }, { replace: true })
         setClaims([])
         setClaimsLoading(false)
         setClaimsError(null)
@@ -57,32 +85,43 @@ export default function RolesPage() {
     } catch (cause) {
       if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : "加载失败")
     }
-  }, [page, query])
+  }, [page, query, roleId, updateParams])
 
   useEffect(() => {
     void load()
   }, [load])
 
-  async function selectRole(role: RoleSummary) {
+  // 选中角色的 Claims 由 URL 驱动(#27):role 参数变化即加载,清空即收起。
+  useEffect(() => {
+    if (!roleId) {
+      claimsSeq.current++
+      setClaims([])
+      setClaimsLoading(false)
+      setClaimsError(null)
+      return
+    }
     const seq = ++claimsSeq.current
-    selectedRef.current = role
-    setSelected(role)
     setClaims([])
     setClaimsLoading(true)
     setClaimsError(null)
-    try {
-      setError(null)
-      const data = await apiGet<RoleClaim[]>(claimsPath(role.id))
-      if (seq === claimsSeq.current) setClaims(data)
-    } catch (cause) {
-      if (seq === claimsSeq.current) setClaimsError(cause instanceof Error ? cause.message : "Claims 加载失败")
-    } finally {
-      if (seq === claimsSeq.current) setClaimsLoading(false)
-    }
-  }
+    void (async () => {
+      try {
+        const data = await apiGet<RoleClaim[]>(claimsPath(roleId))
+        if (seq !== claimsSeq.current) return
+        setClaims(data)
+        // MFA step-up 草稿恢复(#26):草稿带 roleId,只有回到同一角色才恢复(consume 即弃)。
+        const saved = consumeDraft<{ roleId: string; draft: ClaimRequest }>("roles.claim")
+        if (saved && saved.roleId === roleId) setClaimDraft(saved.draft)
+      } catch (cause) {
+        if (seq === claimsSeq.current) setClaimsError(cause instanceof Error ? cause.message : "Claims 加载失败")
+      } finally {
+        if (seq === claimsSeq.current) setClaimsLoading(false)
+      }
+    })()
+  }, [roleId])
 
   async function addClaim() {
-    if (!selected) return
+    if (!roleId) return
     const request = {
       claimType: claimDraft.claimType.trim(),
       claimValue: claimDraft.claimValue.trim(),
@@ -93,9 +132,11 @@ export default function RolesPage() {
       return
     }
     setClaimsBusy(true)
+    saveDraft("roles.claim", { roleId, draft: claimDraft })
     try {
       setError(null)
-      const created = await apiSend<RoleClaim>("POST", claimsPath(selected.id), request)
+      const created = await apiSend<RoleClaim>("POST", claimsPath(roleId), request)
+      clearDraft("roles.claim")
       setClaims((items) => [...items, created])
       setClaimDraft(EMPTY_CLAIM)
     } catch (cause) {
@@ -106,16 +147,17 @@ export default function RolesPage() {
   }
 
   async function removeClaim(claim: RoleClaim) {
-    if (!selected || !window.confirm(`确认删除 Claim ${claim.claimType}？`)) return
+    if (!roleId) return
     setClaimsBusy(true)
     try {
       setError(null)
-      await apiSend("DELETE", `${claimsPath(selected.id)}/${claim.id}`)
+      await apiSend("DELETE", `${claimsPath(roleId)}/${claim.id}`)
       setClaims((items) => items.filter((item) => item.id !== claim.id))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "删除 Claim 失败")
     } finally {
       setClaimsBusy(false)
+      setClaimPendingDelete(null)
     }
   }
 
@@ -130,10 +172,7 @@ export default function RolesPage() {
             id="query"
             className="w-64"
             value={query}
-            onChange={(event) => {
-              setPage(1)
-              setQuery(event.target.value)
-            }}
+            onChange={(event) => updateParams({ q: event.target.value, page: null }, { replace: true })}
             placeholder="输入即搜索"
           />
         </div>
@@ -152,9 +191,9 @@ export default function RolesPage() {
             {(result?.items ?? []).map((role) => (
               <Button
                 key={role.id}
-                variant={selected?.id === role.id ? "default" : "outline"}
+                variant={roleId === role.id ? "default" : "outline"}
                 disabled={claimsBusy}
-                onClick={() => void selectRole(role)}
+                onClick={() => updateParams({ role: role.id })}
               >
                 {role.name}
               </Button>
@@ -167,15 +206,29 @@ export default function RolesPage() {
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">第 {page} / {totalPages} 页</span>
         <div className="space-x-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>上一页</Button>
-          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)}>下一页</Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => updateParams({ page: String(page - 1) })}
+          >
+            上一页
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages}
+            onClick={() => updateParams({ page: String(page + 1) })}
+          >
+            下一页
+          </Button>
         </div>
       </div>
 
-      {selected && (
+      {roleId && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">自定义 Claims · {selected.name}</CardTitle>
+            <CardTitle className="text-base">自定义 Claims · {result?.items.find((role) => role.id === roleId)?.name ?? roleId}</CardTitle>
             <CardDescription>仅允许 panda: 命名空间；添加和删除需要近期完成 WebAuthn。</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -195,7 +248,7 @@ export default function RolesPage() {
                         <td className="px-3 py-2 font-mono text-xs">{claim.claimType}</td>
                         <td className="px-3 py-2">{claim.claimValue}</td>
                         <td className="px-3 py-2 font-mono text-xs">{claim.scope}</td>
-                        <td className="px-3 py-2 text-right"><Button variant="outline" size="sm" disabled={claimsBusy} onClick={() => void removeClaim(claim)}>删除</Button></td>
+                        <td className="px-3 py-2 text-right"><Button variant="outline" size="sm" disabled={claimsBusy} onClick={() => setClaimPendingDelete(claim)}>删除</Button></td>
                       </tr>
                     ))}
                   </tbody>
@@ -213,6 +266,22 @@ export default function RolesPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* 删除确认(#28):window.confirm 换 AlertDialog。 */}
+      <AlertDialog open={claimPendingDelete !== null} onOpenChange={(open) => !open && setClaimPendingDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除 Claim {claimPendingDelete?.claimType}？</AlertDialogTitle>
+            <AlertDialogDescription>删除后即刻生效；添加和删除 Claim 都会记录管理审计。</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => claimPendingDelete && void removeClaim(claimPendingDelete)}>
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

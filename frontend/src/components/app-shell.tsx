@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
 import { Menu, X } from "lucide-react"
-import { apiGet, type Session } from "@/lib/api"
+import { type Session } from "@/lib/api"
 import { NAV, NAV_TITLES } from "@/lib/nav"
+import { getSession } from "@/lib/session"
 
 import { Button } from "@/components/ui/button"
 
@@ -45,7 +46,8 @@ export default function AppShell() {
 
   useEffect(() => {
     // 静默获取当前用户（401 时 apiGet 自会跳登录）；仅用于顶栏展示。
-    apiGet<Session>("/admin/api/session").then(setSession).catch(() => setSession(null))
+    // 经模块级缓存(#31):与概览/用户页共享同一次请求,消除首屏双发。
+    getSession().then(setSession).catch(() => setSession(null))
   }, [])
 
   useEffect(() => {

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import ClientsPage from "./clients"
+import { MemoryRouter } from "react-router-dom"
 import type { ClientDetail, ClientSummary } from "@/lib/api"
 
 const summary = (clientId: string, displayName: string): ClientSummary => ({
@@ -46,7 +47,7 @@ describe("ClientsPage select ordering", () => {
     }))
     const user = userEvent.setup()
 
-    render(<ClientsPage />)
+    render(<MemoryRouter><ClientsPage /></MemoryRouter>)
     await user.click(await screen.findByText("admin-web"))
     await user.click(await screen.getByText("me-web"))
 
@@ -69,7 +70,7 @@ describe("ClientsPage list errors", () => {
       return Promise.reject(new Error(`unexpected request: ${path}`))
     }))
 
-    render(<ClientsPage />)
+    render(<MemoryRouter><ClientsPage /></MemoryRouter>)
 
     // 之前 catch(() => setList(null)) 把失败吞成空列表,标题恒显「…」且无任何提示(#21)。
     expect(await screen.findByText("请求失败(HTTP 500)")).toBeInTheDocument()
@@ -84,7 +85,7 @@ describe("ClientsPage list errors", () => {
     }))
     const user = userEvent.setup()
 
-    render(<ClientsPage />)
+    render(<MemoryRouter><ClientsPage /></MemoryRouter>)
     await user.click(await screen.findByText("me-web"))
 
     expect(await screen.findByText("network down")).toBeInTheDocument()

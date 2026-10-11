@@ -1,29 +1,52 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { apiGet, AUDIT_ACTION, type AdminAuditEntry, type LoginLogEntry, type PageResult } from "@/lib/api"
 
 /**
- * 审计查询（0.3）：登录日志与管理操作日志双视图，只读 + 时间过滤 + 分页。
+ * 审计查询（0.3）：登录日志与管理操作日志双视图，只读 + 过滤 + 分页。
+ * 视图/时间/维度过滤/页码全部进 URL(#27);维度过滤(#23)对齐 server 契约
+ * (logins: userName/succeeded;admin: actor/action)。
  */
 export default function AuditPage() {
-  const [tab, setTab] = useState<"logins" | "admin">("logins")
-  const [from, setFrom] = useState("")
-  const [to, setTo] = useState("")
-  // 维度过滤(#23):server 侧契约已支持——登录日志 userName/succeeded,管理日志 actor/action,
-  // BFF 本就透传 query,这里纯前端接线。
-  const [userName, setUserName] = useState("")
-  const [succeeded, setSucceeded] = useState("")
-  const [actor, setActor] = useState("")
-  const [action, setAction] = useState("")
-  const [page, setPage] = useState(1)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  const tab = searchParams.get("tab") === "admin" ? "admin" : "logins"
+  const from = searchParams.get("from") ?? ""
+  const to = searchParams.get("to") ?? ""
+  const userName = searchParams.get("userName") ?? ""
+  const succeeded = searchParams.get("succeeded") ?? ""
+  const actor = searchParams.get("actor") ?? ""
+  const action = searchParams.get("action") ?? ""
+  const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1)
+
+  const updateParams = useCallback(
+    (patch: Record<string, string | null>, options?: { replace?: boolean }) => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          for (const [key, value] of Object.entries(patch)) {
+            if (value === null || value === "") next.delete(key)
+            else next.set(key, value)
+          }
+          return next
+        },
+        { replace: options?.replace ?? false },
+      )
+    },
+    [setSearchParams],
+  )
+
   const [logins, setLogins] = useState<PageResult<LoginLogEntry> | null>(null)
   const [admin, setAdmin] = useState<PageResult<AdminAuditEntry> | null>(null)
   const [error, setError] = useState<string | null>(null)
-  // 时间/过滤输入即触发:用序号丢弃乱序返回的旧响应,避免表格闪回旧过滤条件的结果。
+  // 过滤输入即触发:用序号丢弃乱序返回的旧响应,避免表格闪回旧过滤条件的结果。
   const loadSeq = useRef(0)
   const pageSize = 20
 
@@ -60,25 +83,13 @@ export default function AuditPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-end gap-3">
-        <div className="flex rounded-md border p-0.5 text-sm">
-          {(
-            [
-              ["logins", "登录日志"],
-              ["admin", "管理日志"],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              key={key}
-              className={`rounded px-3 py-1.5 ${tab === key ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-              onClick={() => {
-                setPage(1)
-                setTab(key)
-              }}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {/* 视图切换(#29):radix Tabs 接管无障碍(role=tablist/aria-selected/键盘导航)。 */}
+        <Tabs value={tab} onValueChange={(value) => updateParams({ tab: value, page: null })}>
+          <TabsList>
+            <TabsTrigger value="logins">登录日志</TabsTrigger>
+            <TabsTrigger value="admin">管理日志</TabsTrigger>
+          </TabsList>
+        </Tabs>
         <div className="grid gap-1.5">
           <Label htmlFor="from">起（本地时区）</Label>
           <Input
@@ -86,10 +97,7 @@ export default function AuditPage() {
             type="datetime-local"
             className="w-56"
             value={from}
-            onChange={(event) => {
-              setPage(1)
-              setFrom(event.target.value)
-            }}
+            onChange={(event) => updateParams({ from: event.target.value, page: null }, { replace: true })}
           />
         </div>
         <div className="grid gap-1.5">
@@ -99,10 +107,7 @@ export default function AuditPage() {
             type="datetime-local"
             className="w-56"
             value={to}
-            onChange={(event) => {
-              setPage(1)
-              setTo(event.target.value)
-            }}
+            onChange={(event) => updateParams({ to: event.target.value, page: null }, { replace: true })}
           />
         </div>
         {tab === "logins" ? (
@@ -113,28 +118,25 @@ export default function AuditPage() {
                 id="audit-user"
                 className="w-44"
                 value={userName}
-                onChange={(event) => {
-                  setPage(1)
-                  setUserName(event.target.value)
-                }}
+                onChange={(event) => updateParams({ userName: event.target.value, page: null }, { replace: true })}
                 placeholder="用户名"
               />
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="audit-succeeded">结果</Label>
-              <select
-                id="audit-succeeded"
-                className="h-9 rounded-md border bg-background px-3 text-sm"
-                value={succeeded}
-                onChange={(event) => {
-                  setPage(1)
-                  setSucceeded(event.target.value)
-                }}
+              <Select
+                value={succeeded || "all"}
+                onValueChange={(value) => updateParams({ succeeded: value === "all" ? null : value, page: null })}
               >
-                <option value="">全部</option>
-                <option value="true">成功</option>
-                <option value="false">失败</option>
-              </select>
+                <SelectTrigger id="audit-succeeded" className="w-28">
+                  <SelectValue placeholder="全部" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部</SelectItem>
+                  <SelectItem value="true">成功</SelectItem>
+                  <SelectItem value="false">失败</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </>
         ) : (
@@ -145,10 +147,7 @@ export default function AuditPage() {
                 id="audit-actor"
                 className="w-44"
                 value={actor}
-                onChange={(event) => {
-                  setPage(1)
-                  setActor(event.target.value)
-                }}
+                onChange={(event) => updateParams({ actor: event.target.value, page: null }, { replace: true })}
                 placeholder="操作者用户名"
               />
             </div>
@@ -158,10 +157,7 @@ export default function AuditPage() {
                 id="audit-action"
                 className="w-44"
                 value={action}
-                onChange={(event) => {
-                  setPage(1)
-                  setAction(event.target.value)
-                }}
+                onChange={(event) => updateParams({ action: event.target.value, page: null }, { replace: true })}
                 placeholder="如 user.freeze"
               />
             </div>
@@ -254,10 +250,20 @@ export default function AuditPage() {
           第 {page} / {totalPages} 页
         </span>
         <div className="space-x-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((value) => value - 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => updateParams({ page: String(page - 1) })}
+          >
             上一页
           </Button>
-          <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage((value) => value + 1)}>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= totalPages}
+            onClick={() => updateParams({ page: String(page + 1) })}
+          >
             下一页
           </Button>
         </div>
