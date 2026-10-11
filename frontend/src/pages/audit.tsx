@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
@@ -15,6 +16,7 @@ import { apiGet, AUDIT_ACTION, type AdminAuditEntry, type LoginLogEntry, type Pa
  * (logins: userName/succeeded;admin: actor/action)。
  */
 export default function AuditPage() {
+  const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const tab = searchParams.get("tab") === "admin" ? "admin" : "logins"
@@ -69,7 +71,7 @@ export default function AuditPage() {
         if (seq === loadSeq.current) setAdmin(data)
       }
     } catch (cause) {
-      if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : "加载失败")
+      if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : t("加载失败"))
     }
   }, [tab, page, from, to, userName, succeeded, actor, action])
 
@@ -86,12 +88,12 @@ export default function AuditPage() {
         {/* 视图切换(#29):radix Tabs 接管无障碍(role=tablist/aria-selected/键盘导航)。 */}
         <Tabs value={tab} onValueChange={(value) => updateParams({ tab: value, page: null })}>
           <TabsList>
-            <TabsTrigger value="logins">登录日志</TabsTrigger>
-            <TabsTrigger value="admin">管理日志</TabsTrigger>
+            <TabsTrigger value="logins">{t("登录日志")}</TabsTrigger>
+            <TabsTrigger value="admin">{t("管理日志")}</TabsTrigger>
           </TabsList>
         </Tabs>
         <div className="grid gap-1.5">
-          <Label htmlFor="from">起（本地时区）</Label>
+          <Label htmlFor="from">{t("起（本地时区）")}</Label>
           <Input
             id="from"
             type="datetime-local"
@@ -101,7 +103,7 @@ export default function AuditPage() {
           />
         </div>
         <div className="grid gap-1.5">
-          <Label htmlFor="to">止（本地时区）</Label>
+          <Label htmlFor="to">{t("止（本地时区）")}</Label>
           <Input
             id="to"
             type="datetime-local"
@@ -113,17 +115,17 @@ export default function AuditPage() {
         {tab === "logins" ? (
           <>
             <div className="grid gap-1.5">
-              <Label htmlFor="audit-user">用户</Label>
+              <Label htmlFor="audit-user">{t("用户")}</Label>
               <Input
                 id="audit-user"
                 className="w-44"
                 value={userName}
                 onChange={(event) => updateParams({ userName: event.target.value, page: null }, { replace: true })}
-                placeholder="用户名"
+                placeholder={t("用户名")}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="audit-succeeded">结果</Label>
+              <Label htmlFor="audit-succeeded">{t("结果")}</Label>
               <Select
                 value={succeeded || "all"}
                 onValueChange={(value) => updateParams({ succeeded: value === "all" ? null : value, page: null })}
@@ -132,9 +134,9 @@ export default function AuditPage() {
                   <SelectValue placeholder="全部" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">全部</SelectItem>
-                  <SelectItem value="true">成功</SelectItem>
-                  <SelectItem value="false">失败</SelectItem>
+                  <SelectItem value="all">{t("全部")}</SelectItem>
+                  <SelectItem value="true">{t("成功")}</SelectItem>
+                  <SelectItem value="false">{t("失败")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -142,28 +144,28 @@ export default function AuditPage() {
         ) : (
           <>
             <div className="grid gap-1.5">
-              <Label htmlFor="audit-actor">操作者</Label>
+              <Label htmlFor="audit-actor">{t("操作者")}</Label>
               <Input
                 id="audit-actor"
                 className="w-44"
                 value={actor}
                 onChange={(event) => updateParams({ actor: event.target.value, page: null }, { replace: true })}
-                placeholder="操作者用户名"
+                placeholder={t("操作者用户名")}
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="audit-action">动作</Label>
+              <Label htmlFor="audit-action">{t("动作")}</Label>
               <Input
                 id="audit-action"
                 className="w-44"
                 value={action}
                 onChange={(event) => updateParams({ action: event.target.value, page: null }, { replace: true })}
-                placeholder="如 user.freeze"
+                placeholder={t("动作", { defaultValue: "" }) === "" ? "如 user.freeze" : "如 user.freeze"}
               />
             </div>
           </>
         )}
-        {result && <span className="pb-2 text-sm text-muted-foreground">共 {result.total} 条</span>}
+        {result && <span className="pb-2 text-sm text-muted-foreground">{t("共 {{total}} 条", { total: result.total })}</span>}
       </div>
 
       {error && <p className="text-destructive">{error}</p>}
@@ -174,10 +176,10 @@ export default function AuditPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">时间</th>
-                  <th className="px-4 py-3 font-medium">用户</th>
-                  <th className="px-4 py-3 font-medium">结果</th>
-                  <th className="px-4 py-3 font-medium">失败原因</th>
+                  <th className="px-4 py-3 font-medium">{t("时间")}</th>
+                  <th className="px-4 py-3 font-medium">{t("用户")}</th>
+                  <th className="px-4 py-3 font-medium">{t("结果")}</th>
+                  <th className="px-4 py-3 font-medium">{t("失败原因")}</th>
                   <th className="px-4 py-3 font-medium">IP</th>
                 </tr>
               </thead>
@@ -188,9 +190,9 @@ export default function AuditPage() {
                     <td className="px-4 py-2.5">{log.userName}</td>
                     <td className="px-4 py-2.5">
                       {log.succeeded ? (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">成功</span>
+                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">{t("成功")}</span>
                       ) : (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">失败</span>
+                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">{t("失败")}</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-muted-foreground">{log.failureReason ?? "—"}</td>
@@ -200,14 +202,14 @@ export default function AuditPage() {
                 {!logins && !error && (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                      正在加载…
+                      {t("正在加载…")}
                     </td>
                   </tr>
                 )}
                 {logins && logins.items.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                      该时间范围内没有记录
+                      {t("该时间范围内没有记录")}
                     </td>
                   </tr>
                 )}
@@ -217,10 +219,10 @@ export default function AuditPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">时间</th>
-                  <th className="px-4 py-3 font-medium">操作者</th>
+                  <th className="px-4 py-3 font-medium">{t("时间")}</th>
+                  <th className="px-4 py-3 font-medium">{t("操作者")}</th>
                   <th className="px-4 py-3 font-medium">动作</th>
-                  <th className="px-4 py-3 font-medium">目标</th>
+                  <th className="px-4 py-3 font-medium">{t("目标")}</th>
                   <th className="px-4 py-3 font-medium">IP</th>
                 </tr>
               </thead>
@@ -230,7 +232,7 @@ export default function AuditPage() {
                     <td className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString("zh-CN")}</td>
                     <td className="px-4 py-2.5">{log.actorUserName ?? log.actorUserId}</td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-xs">
-                      <span>{AUDIT_ACTION[log.action] ?? log.action}</span>
+                      <span>{t(AUDIT_ACTION[log.action] ?? log.action)}</span>
                       <span className="ml-1.5 font-mono text-muted-foreground">{log.action}</span>
                     </td>
                     <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
@@ -242,14 +244,14 @@ export default function AuditPage() {
                 {!admin && !error && (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                      正在加载…
+                      {t("正在加载…")}
                     </td>
                   </tr>
                 )}
                 {admin && admin.items.length === 0 && (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                      该时间范围内没有记录
+                      {t("该时间范围内没有记录")}
                     </td>
                   </tr>
                 )}
@@ -270,7 +272,7 @@ export default function AuditPage() {
             disabled={page <= 1}
             onClick={() => updateParams({ page: String(page - 1) })}
           >
-            上一页
+            {t("上一页")}
           </Button>
           <Button
             variant="outline"
@@ -278,7 +280,7 @@ export default function AuditPage() {
             disabled={page >= totalPages}
             onClick={() => updateParams({ page: String(page + 1) })}
           >
-            下一页
+            {t("下一页")}
           </Button>
         </div>
       </div>

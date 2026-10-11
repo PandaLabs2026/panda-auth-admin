@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { type Session } from "@/lib/api"
 import { NAV } from "@/lib/nav"
 import { getSession } from "@/lib/session"
+import { useTranslation } from "react-i18next"
 
 /** OIDC discovery 的常用子集（公网同源端点 /.well-known/openid-configuration，无凭据）。 */
 type Discovery = {
@@ -28,6 +29,7 @@ const MODULES = NAV.filter((item) => item.to !== "/")
  * 管理后台概览：登录闭环 + 真实身份与 IDP 状态；外壳（侧边栏/顶栏/登出）在 AppShell。
  */
 export default function DashboardPage() {
+  const { t } = useTranslation()
   const [session, setSession] = useState<Session | null>(null)
   const [discovery, setDiscovery] = useState<Discovery | null>(null)
   const [loading, setLoading] = useState(true)
@@ -55,7 +57,7 @@ export default function DashboardPage() {
     return (
       <div className="flex items-center gap-3">
         <img src="/admin/apple-touch-icon.png" alt="" className="h-12 w-12 rounded-xl animate-pulse" />
-        <span className="text-sm text-muted-foreground">正在验证登录状态…</span>
+        <span className="text-sm text-muted-foreground">{t("正在验证登录状态…")}</span>
       </div>
     )
   }
@@ -65,7 +67,7 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      {error && <p className="text-destructive">会话服务异常，请刷新重试。</p>}
+      {error && <p className="text-destructive">{t("会话服务异常，请刷新重试。")}</p>}
       {session && (
         <div className="grid gap-6 lg:grid-cols-2">
           {/* 身份卡：当前管理员会话（数据来自 BFF /admin/api/session） */}
@@ -77,7 +79,7 @@ export default function DashboardPage() {
                 </span>
                 {displayName}
               </CardTitle>
-              <CardDescription>{session.email ?? "未绑定邮箱"}</CardDescription>
+              <CardDescription>{session.email ?? t("未绑定邮箱")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
               <div className="flex flex-wrap gap-1.5">
@@ -88,26 +90,26 @@ export default function DashboardPage() {
                 ))}
               </div>
               <p className="text-muted-foreground">
-                身份标识：<code className="rounded bg-muted px-1.5 py-0.5 text-xs">{session.subject}</code>
+                {t("身份标识：")}<code className="rounded bg-muted px-1.5 py-0.5 text-xs">{session.subject}</code>
               </p>
-              <p className="text-xs text-muted-foreground">会话由 OIDC（admin-web · 授权码 + PKCE）签发，闲置 2 小时过期</p>
+              <p className="text-xs text-muted-foreground">{t("会话由 OIDC（admin-web · 授权码 + PKCE）签发，闲置 2 小时过期")}</p>
             </CardContent>
           </Card>
 
           {/* IDP 状态卡：discovery 实时数据（拉取失败时如实降级显示） */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">IDP 状态</CardTitle>
+              <CardTitle className="text-base">{t("IDP 状态")}</CardTitle>
               <CardDescription>
                 {discovery ? (
                   <span className="flex items-center gap-1.5">
                     <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                    在线 · {discovery.issuer}
+                    {t("在线 · {{issuer}}", { issuer: discovery.issuer })}
                   </span>
                 ) : (
                   <span className="flex items-center gap-1.5">
                     <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/40" />
-                    discovery 不可达
+                    {t("discovery 不可达")}
                   </span>
                 )}
               </CardDescription>
@@ -142,7 +144,7 @@ export default function DashboardPage() {
                   </div>
                 </dl>
               ) : (
-                <p className="text-xs text-muted-foreground">无法读取 /.well-known/openid-configuration。</p>
+                <p className="text-xs text-muted-foreground">{t("无法读取 /.well-known/openid-configuration。")}</p>
               )}
             </CardContent>
           </Card>
@@ -152,8 +154,8 @@ export default function DashboardPage() {
       {/* 管理模块卡:与侧边栏同源(lib/nav.ts),可点击直达。 */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-sm">管理模块</CardTitle>
-          <CardDescription>点击卡片进入对应模块；全部变更操作均记录管理审计</CardDescription>
+          <CardTitle className="text-sm">{t("管理模块")}</CardTitle>
+          <CardDescription>{t("点击卡片进入对应模块；全部变更操作均记录管理审计")}</CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {MODULES.map((module) => (
@@ -162,8 +164,8 @@ export default function DashboardPage() {
               to={module.to}
               className="rounded-lg border bg-muted/20 p-4 transition-colors hover:border-primary/40 hover:bg-muted/40"
             >
-              <p className="text-sm font-medium">{module.label}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{module.desc}</p>
+              <p className="text-sm font-medium">{t(module.label)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t(module.desc)}</p>
             </Link>
           ))}
         </CardContent>

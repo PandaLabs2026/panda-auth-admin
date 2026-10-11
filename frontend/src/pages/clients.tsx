@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react"
+import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
@@ -31,6 +32,7 @@ type ClientDraft = {
  * 选中客户端进 URL(#27);白名单/权限草稿经 sessionStorage 暂存(#26),MFA step-up 返回后恢复。
  */
 export default function ClientsPage() {
+  const { t } = useTranslation()
   const [searchParams, setSearchParams] = useSearchParams()
   const clientId = searchParams.get("client")
 
@@ -73,13 +75,13 @@ export default function ClientsPage() {
         setList(data)
         setListError(null)
       })
-      .catch((cause) => setListError(cause instanceof Error ? cause.message : "客户端列表加载失败"))
+      .catch((cause) => setListError(cause instanceof Error ? cause.message : t("客户端列表加载失败")))
     apiGet<ClientOptions>("/admin/api/clients/options")
       .then((data) => {
         setOptions(data)
         setOptionsError(null)
       })
-      .catch((cause) => setOptionsError(cause instanceof Error ? cause.message : "权限目录加载失败"))
+      .catch((cause) => setOptionsError(cause instanceof Error ? cause.message : t("权限目录加载失败")))
   }, [])
 
   // 选中客户端由 URL 驱动(#27):刷新/直链可恢复;参数清空即收起详情。
@@ -110,7 +112,7 @@ export default function ClientsPage() {
         setPermissions(new Set(detail.permissions))
       } catch (cause) {
         if (seq !== selectSeq.current) return
-        setError(cause instanceof Error ? cause.message : "详情加载失败")
+        setError(cause instanceof Error ? cause.message : t("详情加载失败"))
       }
     })()
   }, [clientId])
@@ -133,10 +135,10 @@ export default function ClientsPage() {
       })
       clearDraft("clients.form")
       setSelected(updated)
-      setNotice("白名单已更新。")
+      setNotice(t("白名单已更新。"))
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "保存失败")
+      setError(cause instanceof Error ? cause.message : t("保存失败"))
     } finally {
       setBusy(false)
     }
@@ -152,10 +154,10 @@ export default function ClientsPage() {
       })
       clearDraft("clients.form")
       setSelected(updated)
-      setNotice("权限已更新。")
+      setNotice(t("权限已更新。"))
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "保存失败")
+      setError(cause instanceof Error ? cause.message : t("保存失败"))
     } finally {
       setBusy(false)
     }
@@ -167,10 +169,10 @@ export default function ClientsPage() {
     setBusy(true)
     try {
       const response = await apiSend<{ clientSecret: string }>("POST", `/admin/api/clients/${selected.clientId}/rotate-secret`)
-      setNotice(`新密钥（仅显示一次）：${response.clientSecret}`)
+      setNotice(t("新密钥（仅显示一次）：{{secret}}", { secret: response.clientSecret }))
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "轮换失败")
+      setError(cause instanceof Error ? cause.message : t("轮换失败"))
     } finally {
       setBusy(false)
     }
@@ -186,17 +188,17 @@ export default function ClientsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">客户端（{list?.total ?? (listError ? "—" : "…")}）</CardTitle>
-          <CardDescription>点击查看与编辑；机密客户端（confidential）持有密钥，公共客户端（public）依赖 PKCE。</CardDescription>
+          <CardTitle className="text-base">{t("客户端（{{total}}）", { total: list?.total ?? (listError ? "—" : "…") })}</CardTitle>
+          <CardDescription>{t("点击查看与编辑；机密客户端（confidential）持有密钥，公共客户端（public）依赖 PKCE。")}</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto p-0">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                 <th className="px-4 py-3 font-medium">Client ID</th>
-                <th className="px-4 py-3 font-medium">名称</th>
-                <th className="px-4 py-3 font-medium">类型</th>
-                <th className="px-4 py-3 font-medium">授权方式</th>
+                <th className="px-4 py-3 font-medium">{t("名称")}</th>
+                <th className="px-4 py-3 font-medium">{t("类型")}</th>
+                <th className="px-4 py-3 font-medium">{t("授权方式")}</th>
               </tr>
             </thead>
             <tbody>
@@ -216,14 +218,14 @@ export default function ClientsPage() {
               {!list && !listError && (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                    正在加载…
+                    {t("正在加载…")}
                   </td>
                 </tr>
               )}
               {list && list.items.length === 0 && (
                 <tr>
                   <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
-                    没有客户端
+                    {t("没有客户端")}
                   </td>
                 </tr>
               )}
@@ -236,12 +238,12 @@ export default function ClientsPage() {
         <>
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">回调 / 登出白名单 · {selected.clientId}</CardTitle>
-              <CardDescription>每行一个 URL；保存为整体替换。</CardDescription>
+              <CardTitle className="text-base">{t("回调 / 登出白名单 · {{id}}", { id: selected.clientId })}</CardTitle>
+              <CardDescription>{t("每行一个 URL；保存为整体替换。")}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-2">
               <div className="grid gap-1.5">
-                <Label htmlFor="redirect">RedirectUris（至少一条）</Label>
+                <Label htmlFor="redirect">{t("RedirectUris（至少一条）")}</Label>
                 <textarea
                   id="redirect"
                   className="min-h-28 rounded-md border bg-background p-2 font-mono text-xs"
@@ -260,7 +262,7 @@ export default function ClientsPage() {
               </div>
               <div className="md:col-span-2">
                 <Button size="sm" disabled={busy} onClick={() => void saveUris()}>
-                  保存白名单
+                  {t("保存白名单")}
                 </Button>
               </div>
             </CardContent>
@@ -268,8 +270,8 @@ export default function ClientsPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">权限</CardTitle>
-              <CardDescription>复选即启用；保存为整体替换，服务端校验未知形态。</CardDescription>
+              <CardTitle className="text-base">{t("权限")}</CardTitle>
+              <CardDescription>{t("复选即启用；保存为整体替换，服务端校验未知形态。")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {optionsError ? (
@@ -298,10 +300,10 @@ export default function ClientsPage() {
                 ))
               )}
               {(selected.requirements ?? []).length > 0 && (
-                <p className="text-xs text-muted-foreground">既有要求（只读）：{selected.requirements.join("、")}</p>
+                <p className="text-xs text-muted-foreground">{t("既有要求（只读）：{{list}}", { list: selected.requirements.join("、") })}</p>
               )}
               <Button size="sm" disabled={busy} onClick={() => void savePermissions()}>
-                保存权限
+                {t("保存权限")}
               </Button>
             </CardContent>
           </Card>
@@ -309,14 +311,14 @@ export default function ClientsPage() {
           {selected.clientType === "confidential" && (
             <Card className="border-amber-300 dark:border-amber-600">
               <CardHeader>
-                <CardTitle className="text-base text-amber-800 dark:text-amber-300">密钥轮换</CardTitle>
+                <CardTitle className="text-base text-amber-800 dark:text-amber-300">{t("密钥轮换")}</CardTitle>
                 <CardDescription>
-                  生成 32 字节随机密钥，明文只显示一次；旧密钥立即作废。第一方客户端（admin-web / me-web）轮换后须同步服务器 env 并重跑迁移对账。
+                  {t("生成 32 字节随机密钥，明文只显示一次；旧密钥立即作废。第一方客户端（admin-web / me-web）轮换后须同步服务器 env 并重跑迁移对账。")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Button size="sm" variant="outline" disabled={busy} onClick={() => setRotateConfirmOpen(true)}>
-                  轮换密钥
+                  {t("轮换密钥")}
                 </Button>
               </CardContent>
             </Card>
@@ -328,17 +330,17 @@ export default function ClientsPage() {
       <AlertDialog open={rotateConfirmOpen} onOpenChange={setRotateConfirmOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>轮换 {selected?.clientId} 的密钥？</AlertDialogTitle>
+            <AlertDialogTitle>{t("轮换 {{id}} 的密钥？", { id: selected?.clientId ?? "" })}</AlertDialogTitle>
             <AlertDialogDescription>
-              旧密钥立即作废，新密钥仅显示一次。
+              {t("旧密钥立即作废，新密钥仅显示一次。")}
               {isFirstParty
-                ? "⚠️ 这是第一方客户端：须同步更新服务器 env 并重跑 --migrate，否则其登录会全部失败！"
-                : "依赖旧密钥的集成需尽快更新。"}
+                ? t("⚠️ 这是第一方客户端：须同步更新服务器 env 并重跑 --migrate，否则其登录会全部失败！")
+                : t("依赖旧密钥的集成需尽快更新。")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void rotateSecret()}>轮换密钥</AlertDialogAction>
+            <AlertDialogAction onClick={() => void rotateSecret()}>{t("轮换密钥")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

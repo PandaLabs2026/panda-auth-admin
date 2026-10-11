@@ -1,6 +1,7 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { createBrowserRouter, RouterProvider } from "react-router-dom"
+import "@/i18n"
 import AppShell from "@/components/app-shell"
 import AuditPage from "@/pages/audit"
 import ClientsPage from "@/pages/clients"
