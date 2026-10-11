@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { apiGet, apiSend, type ClientDetail, type ClientOptions, type ClientSummary, type PageResult } from "@/lib/api"
+import { serverError, apiGet, apiSend, type ClientDetail, type ClientOptions, type ClientSummary, type PageResult } from "@/lib/api"
 import { clearDraft, consumeDraft, saveDraft } from "@/lib/drafts"
 
 /** 白名单与权限勾选的草稿形态(#26):按 clientId 匹配恢复。 */
@@ -75,13 +75,13 @@ export default function ClientsPage() {
         setList(data)
         setListError(null)
       })
-      .catch((cause) => setListError(cause instanceof Error ? cause.message : t("客户端列表加载失败")))
+      .catch((cause) => setListError(serverError(cause)))
     apiGet<ClientOptions>("/admin/api/clients/options")
       .then((data) => {
         setOptions(data)
         setOptionsError(null)
       })
-      .catch((cause) => setOptionsError(cause instanceof Error ? cause.message : t("权限目录加载失败")))
+      .catch((cause) => setOptionsError(serverError(cause)))
   }, [])
 
   // 选中客户端由 URL 驱动(#27):刷新/直链可恢复;参数清空即收起详情。
@@ -112,7 +112,7 @@ export default function ClientsPage() {
         setPermissions(new Set(detail.permissions))
       } catch (cause) {
         if (seq !== selectSeq.current) return
-        setError(cause instanceof Error ? cause.message : t("详情加载失败"))
+        setError(serverError(cause))
       }
     })()
   }, [clientId])
@@ -138,7 +138,7 @@ export default function ClientsPage() {
       setNotice(t("白名单已更新。"))
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("保存失败"))
+      setError(serverError(cause))
     } finally {
       setBusy(false)
     }
@@ -157,7 +157,7 @@ export default function ClientsPage() {
       setNotice(t("权限已更新。"))
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("保存失败"))
+      setError(serverError(cause))
     } finally {
       setBusy(false)
     }
@@ -172,7 +172,7 @@ export default function ClientsPage() {
       setNotice(t("新密钥（仅显示一次）：{{secret}}", { secret: response.clientSecret }))
       setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("轮换失败"))
+      setError(serverError(cause))
     } finally {
       setBusy(false)
     }

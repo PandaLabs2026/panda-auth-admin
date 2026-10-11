@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { apiGet, AUDIT_ACTION, type AdminAuditEntry, type LoginLogEntry, type PageResult } from "@/lib/api"
+import { serverError, apiGet, AUDIT_ACTION, type AdminAuditEntry, type LoginLogEntry, type PageResult } from "@/lib/api"
 
 /**
  * 审计查询（0.3）：登录日志与管理操作日志双视图，只读 + 过滤 + 分页。
@@ -71,7 +71,7 @@ export default function AuditPage() {
         if (seq === loadSeq.current) setAdmin(data)
       }
     } catch (cause) {
-      if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : t("加载失败"))
+      if (seq === loadSeq.current) setError(serverError(cause))
     }
   }, [tab, page, from, to, userName, succeeded, actor, action])
 
