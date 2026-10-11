@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { apiGet, apiSend } from "./api"
+import { apiGet, apiSend, ApiError } from "./api"
 
 function json(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -50,5 +50,53 @@ describe("apiSend 403 semantics", () => {
     stubSend(json({ title: "无权限", detail: "该操作需要更高权限。" }, { status: 403 }))
 
     await expect(apiSend("POST", "/admin/api/users/u-1/status", { status: 1 })).rejects.toThrow("该操作需要更高权限。")
+  })
+})
+
+describe("serverError rendering", () => {
+  it("renders the en translation for a known code and falls back to the raw message otherwise", async () => {
+    const { ApiError, serverError } = await import("./api")
+    const { default: i18n } = await import("@/i18n")
+
+    // en 语言下:登记码 → server.* 翻译
+    await i18n.changeLanguage("en")
+    const coded = new ApiError("不能重置自己的密码", "user.self_password_reset_forbidden")
+    expect(serverError(coded)).toBe(
+      "An admin reset signs the target account out everywhere (including your current admin session). Use the self-service password flow to change your own password.",
+    )
+
+    // en 语言下:未知码 → 降级服务端原文
+    const unknown = new ApiError("服务端原始中文细节", "user.brand_new_code")
+    expect(serverError(unknown)).toBe("服务端原始中文细节")
+
+    // zh 语言下:登记码也显示原文(zh 无 server.* 资源,动态信息零损失)
+    await i18n.changeLanguage("zh-CN")
+    expect(serverError(coded)).toBe("不能重置自己的密码")
+
+    // 非 Error 对象 → 默认文案
+    expect(serverError(undefined)).toBe("加载失败")
+  })
+
+  it("carries extensions.code from a ProblemDetails response into ApiError", async () => {
+    vi.stubGlobal("fetch", vi.fn((path: string) => {
+      if (path === "/admin/api/antiforgery") return Promise.resolve(json({ token: "csrf-token" }))
+      if (path === "/admin/api/users/u-1/status") {
+        return Promise.resolve(json({
+          status: 400, title: "不能重置自己的密码", detail: "管理端重置会强制下线目标账号的全部会话。",
+          extensions: { code: "user.self_password_reset_forbidden" },
+        }, { status: 400 }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    }))
+
+    let caught: unknown
+    try {
+      await apiSend("POST", "/admin/api/users/u-1/status", {})
+    } catch (error) {
+      caught = error
+    }
+    expect(caught).toBeInstanceOf(ApiError)
+    expect((caught as ApiError).code).toBe("user.self_password_reset_forbidden")
+    expect((caught as ApiError).message).toBe("管理端重置会强制下线目标账号的全部会话。")
   })
 })
