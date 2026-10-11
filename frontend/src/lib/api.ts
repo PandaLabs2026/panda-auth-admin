@@ -183,6 +183,7 @@ export const AUDIT_ACTION: Record<string, string> = {
   "user.reset_password": "重置密码",
   "user.update_roles": "变更角色",
   "user.unlock": "解锁账号",
+  "user.revoke_tokens": "吊销全部令牌",
   "user.update_profile": "更新资料",
   "user.reset_2fa": "重置两步验证",
   "user.deactivate": "注销账号",

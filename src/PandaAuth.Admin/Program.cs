@@ -563,6 +563,10 @@ app.MapPut("/admin/api/users/{id}/roles", (string id, HttpContext ctx, AdminApiP
 app.MapPost("/admin/api/users/{id}/unlock", (string id, HttpContext ctx, AdminApiProxy proxy) =>
     WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserUnlock(NormalizeRouteValue(id)), HttpMethod.Post)));
 
+// 独立踢下线(仅吊销令牌):契约正本见元仓 ADR 2026-10-11;上游另有 MFA 门禁与自操作封禁。
+app.MapPost("/admin/api/users/{id}/revoke-tokens", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserRevokeTokens(NormalizeRouteValue(id)), HttpMethod.Post)));
+
 app.MapPut("/admin/api/users/{id}/profile", (string id, HttpContext ctx, AdminApiProxy proxy) =>
     WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(NormalizeRouteValue(id)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
 

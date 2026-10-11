@@ -79,6 +79,7 @@ type PendingConfirm =
   | { kind: "roles"; user: UserDetail }
   | { kind: "unlock"; user: UserDetail }
   | { kind: "reset-2fa"; user: UserDetail }
+  | { kind: "revoke-tokens"; user: UserDetail }
   | { kind: "remove-claim"; claim: UserClaim }
 
 /**
@@ -345,6 +346,20 @@ export default function UsersPage() {
     }
   }
 
+  // 独立踢下线(#30):仅吊销令牌,账号状态/凭据不动;server 侧另有 MFA 门禁与自操作封禁。
+  async function revokeTokens(user: UserDetail) {
+    setBusy(true)
+    try {
+      setError(null)
+      setDetail(await apiSend<UserDetail>("POST", `/admin/api/users/${user.id}/revoke-tokens`, {}))
+      await load()
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "下线失败")
+    } finally {
+      setBusy(false)
+    }
+  }
+
   function openProfileEditor(user: UserDetail) {
     setProfileDraft({ email: user.email ?? "", nickname: user.nickname ?? "", region: user.region ?? "" })
     setEditingProfile(true)
@@ -396,6 +411,7 @@ export default function UsersPage() {
     else if (pending.kind === "roles") void toggleAdminRole(pending.user)
     else if (pending.kind === "unlock") void unlock(pending.user)
     else if (pending.kind === "reset-2fa") void resetTwoFactor(pending.user)
+    else if (pending.kind === "revoke-tokens") void revokeTokens(pending.user)
     else if (pending.kind === "remove-claim") void removeClaim(pending.claim)
   }
 
@@ -441,17 +457,23 @@ export default function UsersPage() {
                 description: "将清除临时锁定与连续失败计数。",
                 actionText: "解锁",
               }
-            : confirming.kind === "reset-2fa"
-              ? {
-                  title: `重置用户 ${confirming.user.userName} 的两步验证？`,
-                  description: `将关闭 2FA 并吊销其全部令牌（该账号会被强制下线${confirming.user.id === me?.subject ? "，包括你当前的管理台会话" : ""}）。`,
-                  actionText: "重置两步验证",
-                }
-              : {
-                  title: `删除 Claim ${confirming.claim.claimType}？`,
-                  description: "删除后即刻生效；添加和删除 Claim 都会记录管理审计。",
-                  actionText: "删除",
-                }
+        : confirming.kind === "reset-2fa"
+          ? {
+              title: `重置用户 ${confirming.user.userName} 的两步验证？`,
+              description: `将关闭 2FA 并吊销其全部令牌（该账号会被强制下线${confirming.user.id === me?.subject ? "，包括你当前的管理台会话" : ""}）。`,
+              actionText: "重置两步验证",
+            }
+          : confirming.kind === "revoke-tokens"
+            ? {
+                title: `将用户 ${confirming.user.userName} 的全部会话下线？`,
+                description: "仅吊销其全部令牌（立即生效），账号状态与凭据不变；该用户需重新登录才能再访问。",
+                actionText: "下线全部会话",
+              }
+            : {
+                title: `删除 Claim ${confirming.claim.claimType}？`,
+                description: "删除后即刻生效；添加和删除 Claim 都会记录管理审计。",
+                actionText: "删除",
+              }
     : null
 
   return (
@@ -779,6 +801,17 @@ export default function UsersPage() {
                     onClick={() => setConfirming({ kind: "reset-2fa", user: detail })}
                   >
                     重置两步验证
+                  </Button>
+                )}
+                {/* 踢下线(#30):对自己隐藏(server 侧硬封禁;自助登出已覆盖)。 */}
+                {detail.id !== me?.subject && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => setConfirming({ kind: "revoke-tokens", user: detail })}
+                  >
+                    下线全部会话
                   </Button>
                 )}
                 {detail.id !== me?.subject && (
