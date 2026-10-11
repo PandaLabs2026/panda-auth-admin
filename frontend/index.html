@@ -1,10 +1,17 @@
 <!DOCTYPE html>
-<html lang="zh-CN" class="dark">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
     <title>PandaAuth 管理后台</title>
+    <script>
+      // 主题跟随系统(#31):令牌双档(亮/暗)本就齐备,此前恒暗属骨架期惯性;
+      // 首帧前置 class 防白闪。如需恢复「恒暗色」,删此脚本并把 <html> 写回 class="dark"。
+      if (matchMedia("(prefers-color-scheme: dark)").matches) {
+        document.documentElement.classList.add("dark")
+      }
+    </script>
     <link rel="icon" type="image/png" sizes="32x32" href="/admin/favicon-32.png" />
     <link rel="icon" type="image/png" sizes="16x16" href="/admin/favicon-16.png" />
     <link rel="icon" type="image/x-icon" href="/admin/favicon.ico" />
