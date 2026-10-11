@@ -104,3 +104,46 @@ describe("UsersPage revoke tokens", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument())
   })
 })
+
+describe("UsersPage sorting", () => {
+  it("writes whitelist sort params into the list request", async () => {
+    const fetchMock = vi.fn((path: string) => {
+      if (path.startsWith("/admin/api/users?")) return Promise.resolve(json(list))
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const user = userEvent.setup()
+
+    render(<MemoryRouter><UsersPage /></MemoryRouter>)
+    await user.click(await screen.findByRole("button", { name: /用户名/ }))
+    await screen.findByText("alice")
+
+    // #31:排序进服务端参数(sort/dir 进 URL 由路由层保证)。
+    const listPath = fetchMock.mock.calls.map(([p]) => String(p)).find((p) => p.includes("orderBy=userName"))
+    expect(listPath).toContain("order=asc")
+  })
+})
+
+describe("UsersPage sessions panel", () => {
+  it("renders valid sessions from the read-only view", async () => {
+    vi.stubGlobal("fetch", vi.fn((path: string) => {
+      if (path.startsWith("/admin/api/users?")) return Promise.resolve(json(list))
+      if (path === "/admin/api/users/u-1") return Promise.resolve(json(detail("u-1", "alice")))
+      if (path === "/admin/api/users/u-1/claims") return Promise.resolve(json([]))
+      if (path === "/admin/api/users/u-1/sessions") {
+        return Promise.resolve(json([
+          { id: "rt-1", clientId: "admin-web", type: "refresh_token", creationDate: "2026-10-01T00:00:00Z", expirationDate: "2026-10-15T00:00:00Z" },
+        ]))
+      }
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    }))
+    const user = userEvent.setup()
+
+    render(<MemoryRouter><UsersPage /></MemoryRouter>)
+    await user.click(await screen.findByText("alice"))
+
+    // #30 后半:详情卡下的只读会话面板,独立加载。
+    expect(await screen.findByText("在线会话")).toBeInTheDocument()
+    expect(await screen.findByText("admin-web")).toBeInTheDocument()
+  })
+})
