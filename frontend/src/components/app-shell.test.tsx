@@ -18,6 +18,23 @@ afterEach(() => {
 })
 
 describe("AppShell language switcher", () => {
+  it("uses the dedicated transparent admin mark at 32px", async () => {
+    vi.stubGlobal("fetch", vi.fn((path: string) => {
+      if (path === "/admin/api/session") {
+        return Promise.resolve(json({ subject: "admin-1", name: "Alice", email: null, nickname: null, roles: ["admin"], portalHomeUrl: null }))
+      }
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    }))
+
+    const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>)
+    const mark = container.querySelector("img")
+
+    expect(mark).not.toBeNull()
+    expect(mark).toHaveAttribute("src", "/admin/pandaauth-admin-mark-64.png")
+    expect(mark).toHaveClass("h-8", "w-8")
+    expect(mark).not.toHaveClass("rounded-lg")
+  })
+
   it("toggles between zh-CN and en, persists the choice, and re-renders labels", async () => {
     vi.stubGlobal("fetch", vi.fn((path: string) => {
       if (path === "/admin/api/session") {
