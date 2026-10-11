@@ -70,7 +70,7 @@ export default function AppShell() {
 
   const brand = (
     <div className="flex items-center gap-2.5 px-5 py-5 text-base font-bold text-primary">
-      <img src="/admin/apple-touch-icon.png" alt="" className="h-8 w-8 rounded-lg" />
+      <img src="/admin/pandaauth-admin-mark-64.png" alt="" className="h-8 w-8" />
       PandaAuth
     </div>
   )
