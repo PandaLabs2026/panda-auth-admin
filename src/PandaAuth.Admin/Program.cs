@@ -567,6 +567,10 @@ app.MapPost("/admin/api/users/{id}/unlock", (string id, HttpContext ctx, AdminAp
 app.MapPost("/admin/api/users/{id}/revoke-tokens", (string id, HttpContext ctx, AdminApiProxy proxy) =>
     WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserRevokeTokens(NormalizeRouteValue(id)), HttpMethod.Post)));
 
+// 在线会话只读视图(Valid refresh_token 投影,Payload/ReferenceId 不出服务端):元仓 ADR #88。
+app.MapGet("/admin/api/users/{id}/sessions", (string id, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.UserSessions(NormalizeRouteValue(id)), HttpMethod.Get));
+
 app.MapPut("/admin/api/users/{id}/profile", (string id, HttpContext ctx, AdminApiProxy proxy) =>
     WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(NormalizeRouteValue(id)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
 

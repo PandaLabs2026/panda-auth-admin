@@ -36,6 +36,7 @@ import {
   USER_STATUS,
   apiGet,
   apiSend,
+  type AdminUserSession,
   type CreateUserResponse,
   type ClaimRequest,
   type PageResult,
@@ -91,11 +92,14 @@ type PendingConfirm =
 export default function UsersPage() {
   const [searchParams, setSearchParams] = useSearchParams()
 
-  // ---- URL 状态(#27):q/status/page/user 是唯一事实源 ----
+  // ---- URL 状态(#27):q/status/page/user 是唯一事实源;sort/dir 服务端排序(#31) ----
   const query = searchParams.get("q") ?? ""
   const status = searchParams.get("status") ?? ""
   const page = Math.max(1, Number(searchParams.get("page") ?? "1") || 1)
   const detailUserId = searchParams.get("user")
+  // 排序键与 server 白名单(userName/email/createdAt)一一对应,入口只有表头按钮。
+  const sort = searchParams.get("sort") ?? ""
+  const dir = searchParams.get("dir") === "desc" ? "desc" : "asc"
 
   const updateParams = useCallback(
     (patch: Record<string, string | null>, options?: { replace?: boolean }) => {
@@ -127,6 +131,8 @@ export default function UsersPage() {
   const [claims, setClaims] = useState<UserClaim[]>([])
   const [claimDraft, setClaimDraft] = useState<ClaimRequest>({ claimType: "panda:", claimValue: "", scope: "api" })
   const [claimsBusy, setClaimsBusy] = useState(false)
+  const [sessions, setSessions] = useState<AdminUserSession[] | null>(null)
+  const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [confirming, setConfirming] = useState<PendingConfirm | null>(null)
   const [deactivateTarget, setDeactivateTarget] = useState<UserDetail | null>(null)
   const [deactivateInput, setDeactivateInput] = useState("")
@@ -147,12 +153,35 @@ export default function UsersPage() {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
       if (query.trim()) params.set("query", query.trim())
       if (status) params.set("status", status)
+      // 服务端排序(#31):键来自表头按钮白名单,直接进参数。
+      if (sort) params.set("orderBy", sort)
+      if (sort) params.set("order", dir)
       const data = await apiGet<PageResult<UserSummary>>(`/admin/api/users?${params}`)
       if (seq === loadSeq.current) setResult(data)
     } catch (cause) {
       if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : "加载失败")
     }
-  }, [page, query, status])
+  }, [page, query, status, sort, dir])
+
+  // 会话面板独立加载:失败不影响详情主体(与详情/claims 的 Promise.all 分离)。
+  const loadSessions = useCallback(async (id: string) => {
+    try {
+      setSessionsError(null)
+      const data = await apiGet<AdminUserSession[]>(`/admin/api/users/${id}/sessions`)
+      setSessions(data)
+    } catch (cause) {
+      setSessionsError(cause instanceof Error ? cause.message : "会话加载失败")
+    }
+  }, [])
+
+  // 排序表头(#31):同列切换方向,异列回 asc。
+  const toggleSort = useCallback(
+    (key: "userName" | "email" | "createdAt") => {
+      if (sort === key) updateParams({ sort: key, dir: dir === "asc" ? "desc" : "asc" })
+      else updateParams({ sort: key, dir: "asc" })
+    },
+    [sort, dir, updateParams],
+  )
 
   useEffect(() => {
     void load()
@@ -173,6 +202,9 @@ export default function UsersPage() {
       if (seq !== detailSeq.current) return
       setDetail(user)
       setClaims(userClaims)
+      // 在线会话面板(#30 后半):独立加载,失败不影响详情主体。
+      setSessions(null)
+      void loadSessions(user.id)
       // MFA step-up 草稿恢复(#26):草稿带 userId,只有回到同一用户的详情才恢复;
       // consume 即弃,不匹配的旧草稿顺带清场。
       const savedClaim = consumeDraft<{ userId: string; draft: ClaimRequest }>("users.claim")
@@ -194,6 +226,7 @@ export default function UsersPage() {
     } else {
       setDetail(null)
       setClaims([])
+      setSessions(null)
       setEditingProfile(false)
     }
   }, [detailUserId, openDetail])
@@ -602,10 +635,22 @@ export default function UsersPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                <th className="px-4 py-3 font-medium">用户名</th>
-                <th className="px-4 py-3 font-medium">邮箱</th>
+                <th className="px-4 py-3 font-medium">
+                  <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("userName")}>
+                    用户名{sort === "userName" ? (dir === "asc" ? " ↑" : " ↓") : ""}
+                  </button>
+                </th>
+                <th className="px-4 py-3 font-medium">
+                  <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("email")}>
+                    邮箱{sort === "email" ? (dir === "asc" ? " ↑" : " ↓") : ""}
+                  </button>
+                </th>
                 <th className="px-4 py-3 font-medium">状态</th>
-                <th className="px-4 py-3 font-medium">注册时间</th>
+                <th className="px-4 py-3 font-medium">
+                  <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("createdAt")}>
+                    注册时间{sort === "createdAt" ? (dir === "asc" ? " ↑" : " ↓") : ""}
+                  </button>
+                </th>
                 <th className="px-4 py-3 font-medium text-right">操作</th>
               </tr>
             </thead>
@@ -830,6 +875,58 @@ export default function UsersPage() {
                 )}
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* 在线会话(#30 后半):只读,Valid refresh_token;独立加载与刷新。 */}
+      {detail && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">在线会话</CardTitle>
+            <CardDescription>该账号当前有效的登录会话(refresh token);短时访问令牌不在此列。只读视图。</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {sessionsError ? (
+              <p className="text-sm text-destructive">{sessionsError}</p>
+            ) : sessions === null ? (
+              <p className="text-sm text-muted-foreground">正在加载会话…</p>
+            ) : sessions.length > 0 ? (
+              <div className="overflow-x-auto rounded border">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-muted/50 text-muted-foreground">
+                    <tr>
+                      <th className="px-3 py-2 font-medium">客户端</th>
+                      <th className="px-3 py-2 font-medium">创建时间</th>
+                      <th className="px-3 py-2 font-medium">过期时间</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sessions.map((session) => (
+                      <tr key={session.id} className="border-t">
+                        <td className="px-3 py-2 font-mono text-xs">{session.clientId ?? "—"}</td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {session.creationDate ? new Date(session.creationDate).toLocaleString("zh-CN") : "—"}
+                        </td>
+                        <td className="px-3 py-2 text-muted-foreground">
+                          {session.expirationDate ? new Date(session.expirationDate).toLocaleString("zh-CN") : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">暂无有效会话。</p>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={sessions === null && sessionsError === null}
+              onClick={() => void loadSessions(detail.id)}
+            >
+              刷新
+            </Button>
           </CardContent>
         </Card>
       )}

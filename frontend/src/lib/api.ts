@@ -107,6 +107,15 @@ export type UserDetail = UserSummary & {
 
 export type UserClaim = { id: number; userId: string; claimType: string; claimValue: string; scope: string }
 
+/** 在线会话条目(只读,与 share 的 AdminUserSession 对应;Payload/ReferenceId 不出服务端)。 */
+export type AdminUserSession = {
+  id: string
+  clientId: string | null
+  type: string
+  creationDate: string | null
+  expirationDate: string | null
+}
+
 export type RoleSummary = { id: string; name: string }
 
 export type RoleClaim = { id: number; roleId: string; claimType: string; claimValue: string; scope: string }
