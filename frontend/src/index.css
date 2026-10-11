@@ -9,6 +9,7 @@
  * 改令牌先改 design/tokens.css 正本，再整块同步此处。
  */
 :root {
+  color-scheme: light;
   --radius: 0.625rem;
   --background: #fafaf8;
   --foreground: #2b3438;
@@ -31,6 +32,7 @@
 }
 
 .dark {
+  color-scheme: dark;
   --background: #151b1e;
   --foreground: #e7ecea;
   --card: #1f272b;

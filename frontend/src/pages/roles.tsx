@@ -198,6 +198,8 @@ export default function RolesPage() {
                 {role.name}
               </Button>
             ))}
+            {/* 加载与空态区分(#31)。 */}
+            {!result && !error && <p className="text-sm text-muted-foreground">正在加载…</p>}
             {result && result.items.length === 0 && <p className="text-sm text-muted-foreground">没有匹配的角色</p>}
           </div>
         </CardContent>

@@ -638,6 +638,14 @@ export default function UsersPage() {
                   </td>
                 </tr>
               ))}
+              {/* 加载与空态区分(#31):result 为 null 是加载中,空数组才是真的没有匹配。 */}
+              {!result && !error && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                    正在加载…
+                  </td>
+                </tr>
+              )}
               {result && result.items.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">

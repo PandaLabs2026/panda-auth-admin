@@ -212,6 +212,21 @@ export default function ClientsPage() {
                   <td className="px-4 py-3 text-muted-foreground">{client.consentType}</td>
                 </tr>
               ))}
+              {/* 加载与空态区分(#31):此前 clients 表既无加载态也无空态。 */}
+              {!list && !listError && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                    正在加载…
+                  </td>
+                </tr>
+              )}
+              {list && list.items.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                    没有客户端
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </CardContent>
