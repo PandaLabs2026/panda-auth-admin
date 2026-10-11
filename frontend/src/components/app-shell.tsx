@@ -5,6 +5,8 @@ import { useTranslation } from "react-i18next"
 import { type Session } from "@/lib/api"
 import { NAV, NAV_TITLES } from "@/lib/nav"
 import { getSession } from "@/lib/session"
+import { changeLanguage } from "@/i18n"
+import pkg from "../../package.json"
 
 import { Button } from "@/components/ui/button"
 
@@ -39,7 +41,7 @@ async function logout() {
  * 进入子模块后侧边栏整体消失，2026-09-19 生产走查发现）。
  */
 export default function AppShell() {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const { pathname } = useLocation()
   const title = t(NAV_TITLES[pathname] ?? "管理后台")
   const [session, setSession] = useState<Session | null>(null)
@@ -106,7 +108,7 @@ export default function AppShell() {
         {navLinks}
         <div className="border-t px-5 py-3 text-xs">
           {portalLink}
-          <p className="text-muted-foreground">{t("v{{version}} · 管理后台", { version: __APP_VERSION__ })}</p>
+          <p className="text-muted-foreground">{t("v{{version}} · 管理后台", { version: pkg.version })}</p>
         </div>
       </aside>
 
@@ -137,7 +139,7 @@ export default function AppShell() {
                 </p>
               )}
               {portalLink}
-              <p className="text-muted-foreground">{t("v{{version}} · 管理后台", { version: __APP_VERSION__ })}</p>
+              <p className="text-muted-foreground">{t("v{{version}} · 管理后台", { version: pkg.version })}</p>
             </div>
           </aside>
         </div>
@@ -175,6 +177,14 @@ export default function AppShell() {
             )}
             <Button variant="outline" size="sm" onClick={() => window.location.assign("/account/change-password?returnUrl=/admin")}>
               {t("修改密码")}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label={i18n.language === "en" ? "切换到中文" : "Switch to English"}
+              onClick={() => changeLanguage(i18n.language === "en" ? "zh-CN" : "en")}
+            >
+              {i18n.language === "en" ? "中文" : "EN"}
             </Button>
             <Button variant="outline" size="sm" onClick={logout}>
               {t("退出登录")}
