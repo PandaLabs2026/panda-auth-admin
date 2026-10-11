@@ -16,7 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { apiGet, apiSend, type ClaimRequest, type PageResult, type RoleClaim, type RoleSummary } from "@/lib/api"
+import { serverError, apiGet, apiSend, type ClaimRequest, type PageResult, type RoleClaim, type RoleSummary } from "@/lib/api"
 import { clearDraft, consumeDraft, saveDraft } from "@/lib/drafts"
 
 const EMPTY_CLAIM: ClaimRequest = { claimType: "panda:", claimValue: "", scope: "api" }
@@ -85,7 +85,7 @@ export default function RolesPage() {
         setClaimsError(null)
       }
     } catch (cause) {
-      if (seq === loadSeq.current) setError(cause instanceof Error ? cause.message : t("加载失败"))
+      if (seq === loadSeq.current) setError(serverError(cause))
     }
   }, [page, query, roleId, updateParams])
 
@@ -115,7 +115,7 @@ export default function RolesPage() {
         const saved = consumeDraft<{ roleId: string; draft: ClaimRequest }>("roles.claim")
         if (saved && saved.roleId === roleId) setClaimDraft(saved.draft)
       } catch (cause) {
-        if (seq === claimsSeq.current) setClaimsError(cause instanceof Error ? cause.message : t("Claims 加载失败"))
+        if (seq === claimsSeq.current) setClaimsError(serverError(cause))
       } finally {
         if (seq === claimsSeq.current) setClaimsLoading(false)
       }
@@ -142,7 +142,7 @@ export default function RolesPage() {
       setClaims((items) => [...items, created])
       setClaimDraft(EMPTY_CLAIM)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("添加 Claim 失败"))
+      setError(serverError(cause))
     } finally {
       setClaimsBusy(false)
     }
@@ -156,7 +156,7 @@ export default function RolesPage() {
       await apiSend("DELETE", `${claimsPath(roleId)}/${claim.id}`)
       setClaims((items) => items.filter((item) => item.id !== claim.id))
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t("删除 Claim 失败"))
+      setError(serverError(cause))
     } finally {
       setClaimsBusy(false)
       setClaimPendingDelete(null)
