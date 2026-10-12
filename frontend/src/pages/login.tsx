@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 
 /**
  * 管理后台品牌登录页(由 BFF 的 SPA 回退承载,挑战端点在 /admin/challenge)。
@@ -71,6 +72,7 @@ export default function LoginPage() {
                 {t("登录未完成，请重试；若持续出现请联系管理员。")}
               </p>
             )}
+            {leaving && <Skeleton className="h-1.5 w-full" aria-hidden="true" />}
             <Button className="w-full" disabled={leaving} onClick={startLogin}>
               {leaving ? t("正在前往登录…") : t("使用 PandaAuth 登录")}
             </Button>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { type Session } from "@/lib/api"
 import { NAV } from "@/lib/nav"
 import { getSession } from "@/lib/session"
@@ -55,9 +56,31 @@ export default function DashboardPage() {
   // 若垂直居中，内容出现时整块上跳约半屏，被当成布局故障上报（2026-10-01）。
   if (loading && !session && !error) {
     return (
-      <div className="flex items-center gap-3">
-        <img src="/admin/apple-touch-icon.png" alt="" className="h-12 w-12 rounded-xl animate-pulse" />
-        <span className="text-sm text-muted-foreground">{t("正在验证登录状态…")}</span>
+      <div role="status" aria-label={t("正在验证登录状态…")} className="space-y-6">
+        <div className="grid gap-6 lg:grid-cols-2">
+          {[0, 1].map((card) => (
+            <Card key={card}>
+              <CardHeader className="space-y-3">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-48" />
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Skeleton className="h-7 w-28" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-3 w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader className="space-y-3">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-3 w-64" />
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {MODULES.map((module) => <Skeleton key={module.to} className="h-20 w-full" />)}
+          </CardContent>
+        </Card>
       </div>
     )
   }

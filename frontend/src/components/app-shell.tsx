@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
-import { Menu, X } from "lucide-react"
+import { KeyRound, LayoutDashboard, ScrollText, ShieldCheck, Users, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { type Session } from "@/lib/api"
 import { NAV, NAV_TITLES } from "@/lib/nav"
@@ -9,6 +9,23 @@ import { changeLanguage } from "@/i18n"
 import pkg from "../../package.json"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+  useSidebar,
+} from "@/components/ui/sidebar"
 
 /**
  * 登出：先取防伪令牌（`GET /admin/api/antiforgery` 会同时下发配套 Cookie，两者成对校验），
@@ -40,13 +57,59 @@ async function logout() {
  * 路由切换只替换 <Outlet/>，导航与登出常驻（此前外壳只存在于概览页，
  * 进入子模块后侧边栏整体消失，2026-09-19 生产走查发现）。
  */
+const NAV_ICONS = [LayoutDashboard, Users, ShieldCheck, KeyRound, ScrollText]
+
+function SidebarNavigation() {
+  const { t } = useTranslation()
+  const { setOpenMobile } = useSidebar()
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          {NAV.map((item, index) => {
+            const Icon = NAV_ICONS[index]
+            return (
+              <SidebarMenuItem key={item.to}>
+                <SidebarMenuButton asChild tooltip={t(item.label)}>
+                  <NavLink
+                    to={item.to}
+                    end={item.to === "/"}
+                    onClick={() => setOpenMobile(false)}
+                  >
+                    <Icon />
+                    <span>{t(item.label)}</span>
+                  </NavLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )
+          })}
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  )
+}
+
+function MobileSidebarCloseButton({ label }: { label: string }) {
+  const { setOpenMobile } = useSidebar()
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      className="md:hidden"
+      aria-label={label}
+      onClick={() => setOpenMobile(false)}
+    >
+      <X />
+    </Button>
+  )
+}
+
 export default function AppShell() {
   const { t, i18n } = useTranslation()
   const { pathname } = useLocation()
   const title = t(NAV_TITLES[pathname] ?? "管理后台")
   const [session, setSession] = useState<Session | null>(null)
-  // 移动端抽屉:<768px 侧边栏隐藏,此前无任何导航入口,用户被困在落地页(#22)。
-  const [navOpen, setNavOpen] = useState(false)
 
   useEffect(() => {
     // 静默获取当前用户（401 时 apiGet 自会跳登录）；仅用于顶栏展示。
@@ -54,45 +117,11 @@ export default function AppShell() {
     getSession().then(setSession).catch(() => setSession(null))
   }, [])
 
-  useEffect(() => {
-    if (!navOpen) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setNavOpen(false)
-    }
-    window.addEventListener("keydown", onKeyDown)
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = "hidden"
-    return () => {
-      window.removeEventListener("keydown", onKeyDown)
-      document.body.style.overflow = previousOverflow
-    }
-  }, [navOpen])
-
   const brand = (
-    <div className="flex items-center gap-2.5 px-5 py-5 text-base font-bold text-primary">
+    <div className="flex min-w-0 items-center gap-2.5 px-2 py-2 text-base font-bold text-primary">
       <img src="/admin/pandaauth-admin-mark-64.png" alt="" className="h-9 w-9" />
       PandaAuth
     </div>
-  )
-
-  const navLinks = (
-    <nav className="flex-1 space-y-1 px-3 text-sm">
-      {NAV.map((item) => (
-        <NavLink
-          key={item.to}
-          to={item.to}
-          end={item.to === "/"}
-          onClick={() => setNavOpen(false)}
-          className={({ isActive }) =>
-            `flex items-center rounded-md px-3 py-2 ${
-              isActive ? "bg-primary/10 font-medium text-primary" : "text-muted-foreground hover:bg-muted/50"
-            }`
-          }
-        >
-          {t(item.label)}
-        </NavLink>
-      ))}
-    </nav>
   )
 
   const portalLink = session?.portalHomeUrl && (
@@ -102,64 +131,40 @@ export default function AppShell() {
   )
 
   return (
-    <div className="flex min-h-screen bg-muted/30">
-      <aside className="hidden w-56 shrink-0 flex-col border-r bg-card md:flex">
-        {brand}
-        {navLinks}
-        <div className="border-t px-5 py-3 text-xs">
-          {portalLink}
-          <p className="text-muted-foreground">{t("v{{version}} · 管理后台", { version: pkg.version })}</p>
-        </div>
-      </aside>
-
-      {/* 移动端抽屉:点链接/Esc/遮罩关闭;打开期间锁页面滚动。 */}
-      {navOpen && (
-        <div className="fixed inset-0 z-50 md:hidden" role="dialog" aria-modal="true" aria-label={t("导航菜单")}>
-          <div className="absolute inset-0 bg-black/50" onClick={() => setNavOpen(false)} />
-          <aside className="absolute inset-y-0 left-0 flex w-64 flex-col border-r bg-card shadow-xl">
-            <div className="flex items-center justify-between pr-3">
-              {brand}
-              <button
-                type="button"
-                aria-label={t("关闭导航")}
-                className="rounded-md p-2 text-muted-foreground hover:bg-muted"
-                onClick={() => setNavOpen(false)}
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            {navLinks}
-            <div className="border-t px-5 py-3 text-xs">
-              {session && (
-                <p className="mb-1 flex items-center gap-2 text-muted-foreground">
-                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
-                    {(session.nickname ?? session.name ?? session.email ?? "?").slice(0, 1).toUpperCase()}
-                  </span>
-                  <span className="truncate">{session.nickname ?? session.name ?? session.email}</span>
-                </p>
-              )}
-              {portalLink}
-              <p className="text-muted-foreground">{t("v{{version}} · 管理后台", { version: pkg.version })}</p>
-            </div>
-          </aside>
-        </div>
-      )}
-
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b bg-card px-6 py-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              aria-expanded={navOpen}
-              aria-label={t("打开导航")}
-              className="rounded-md p-2 text-muted-foreground hover:bg-muted md:hidden"
-              onClick={() => setNavOpen(true)}
-            >
-              <Menu className="h-5 w-5" />
-            </button>
-            <h1 className="text-sm font-semibold">{title}</h1>
+    <SidebarProvider>
+      <Sidebar collapsible="offcanvas">
+        <SidebarHeader>
+          <div className="flex items-center justify-between gap-2 px-2 py-1">
+            {brand}
+            <MobileSidebarCloseButton label={t("关闭导航")} />
           </div>
-          <div className="flex items-center gap-2">
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarNavigation />
+        </SidebarContent>
+        <SidebarFooter>
+          <Separator />
+          {session && (
+            <div className="flex min-w-0 items-center gap-2 px-2 py-1 text-xs text-muted-foreground">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 font-bold text-primary">
+                {(session.nickname ?? session.name ?? session.email ?? "?").slice(0, 1).toUpperCase()}
+              </span>
+              <span className="min-w-0 flex-1 truncate">{session.nickname ?? session.name ?? session.email}</span>
+              {session.roles.length > 0 && <Badge variant="secondary">{session.roles[0]}</Badge>}
+            </div>
+          )}
+          {portalLink}
+          <p className="px-2 text-xs text-muted-foreground">{t("v{{version}} · 管理后台", { version: pkg.version })}</p>
+        </SidebarFooter>
+      </Sidebar>
+
+      <SidebarInset className="min-h-svh min-w-0 bg-background">
+        <header className="sticky top-0 z-10 flex min-h-14 items-center justify-between gap-3 border-b bg-background/95 px-4 backdrop-blur sm:px-6">
+          <div className="flex min-w-0 items-center gap-2">
+            <SidebarTrigger className="md:hidden" aria-label={t("打开导航")} />
+            <h1 className="truncate text-sm font-semibold">{title}</h1>
+          </div>
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             {/* 全页跳转（非 SPA 路由）：改密页在 IDP（/account/*），凭据是 OIDC 登录时
                 建立的 IDP 会话 Cookie；成功后令牌全吊销，管理台会话一并失效需重新登录。 */}
             {session && (
@@ -169,9 +174,9 @@ export default function AppShell() {
                 </span>
                 {session.nickname ?? session.name ?? session.email}
                 {session.roles.length > 0 && (
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                  <Badge variant="secondary">
                     {session.roles[0]}
-                  </span>
+                  </Badge>
                 )}
               </span>
             )}
@@ -191,10 +196,10 @@ export default function AppShell() {
             </Button>
           </div>
         </header>
-        <main className="flex-1 p-6">
+        <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">
           <Outlet />
         </main>
-      </div>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
