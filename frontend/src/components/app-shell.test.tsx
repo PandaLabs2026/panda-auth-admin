@@ -71,7 +71,7 @@ describe("AppShell language switcher", () => {
     const openButton = screen.getByRole("button", { name: "打开导航" })
     await user.click(openButton)
     expect(openButton).toHaveAttribute("aria-expanded", "true")
-    expect(screen.getByRole("dialog")).toBeInTheDocument()
+    expect(screen.getByRole("dialog", { name: "导航菜单" })).toBeInTheDocument()
     await user.keyboard("{Escape}")
     expect(openButton).toHaveAttribute("aria-expanded", "false")
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument()

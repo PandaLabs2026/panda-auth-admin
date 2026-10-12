@@ -132,7 +132,7 @@ export default function AppShell() {
 
   return (
     <SidebarProvider>
-      <Sidebar collapsible="offcanvas">
+      <Sidebar collapsible="offcanvas" mobileTitle={t("导航菜单")}>
         <SidebarHeader>
           <div className="flex items-center justify-between gap-2 px-2 py-1">
             {brand}

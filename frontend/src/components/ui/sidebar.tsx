@@ -150,6 +150,7 @@ function SidebarProvider({
 }
 
 function Sidebar({
+  mobileTitle = "Sidebar",
   side = "left",
   variant = "sidebar",
   collapsible = "offcanvas",
@@ -157,6 +158,7 @@ function Sidebar({
   children,
   ...props
 }: React.ComponentProps<"div"> & {
+  mobileTitle?: string
   side?: "left" | "right"
   variant?: "sidebar" | "floating" | "inset"
   collapsible?: "offcanvas" | "icon" | "none"
@@ -194,7 +196,7 @@ function Sidebar({
           side={side}
         >
           <SheetHeader className="sr-only">
-            <SheetTitle>Sidebar</SheetTitle>
+            <SheetTitle>{mobileTitle}</SheetTitle>
             <SheetDescription>Displays the mobile sidebar.</SheetDescription>
           </SheetHeader>
           <div className="flex h-full w-full flex-col">{children}</div>

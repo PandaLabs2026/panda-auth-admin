@@ -779,7 +779,7 @@ export default function UsersPage() {
               <CardDescription>{t("请立即复制并安全送达用户；服务端只保留哈希，无法再次取出。")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap items-center gap-3">
-              <code className="rounded bg-white px-3 py-2 font-mono text-base dark:bg-muted">{newPassword}</code>
+              <code className="rounded bg-card px-3 py-2 font-mono text-base dark:bg-muted">{newPassword}</code>
               <Button variant="outline" size="sm" onClick={() => void copyNewPassword()}>
                 {copied ? t("已复制") : t("复制")}
               </Button>
