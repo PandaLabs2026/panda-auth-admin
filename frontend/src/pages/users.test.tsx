@@ -147,3 +147,21 @@ describe("UsersPage sessions panel", () => {
     expect(await screen.findByText("admin-web")).toBeInTheDocument()
   })
 })
+
+describe("UsersPage long identifiers", () => {
+  it("users keep long IDs inside the table container", async () => {
+    const longId = `user-${"x".repeat(96)}`
+    const longList = { items: [summary(longId, longId)], total: 1, page: 1, pageSize: 20 }
+    vi.stubGlobal("fetch", vi.fn((path: string) => {
+      if (path === "/admin/api/session") return Promise.resolve(json({ subject: "admin-1", name: null, email: null, nickname: null, roles: ["admin"] }))
+      if (path.startsWith("/admin/api/users?")) return Promise.resolve(json(longList))
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    }))
+
+    const { container } = render(<MemoryRouter><UsersPage /></MemoryRouter>)
+
+    expect(await screen.findByText(longId)).toBeInTheDocument()
+    const tableContainer = container.querySelector('[data-slot="table-container"]')
+    expect(tableContainer).toHaveClass("overflow-x-auto")
+  })
+})

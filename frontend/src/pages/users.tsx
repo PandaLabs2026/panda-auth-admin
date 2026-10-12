@@ -3,8 +3,10 @@ import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -657,54 +659,46 @@ export default function UsersPage() {
 
       <Card>
         <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                <th className="px-4 py-3 font-medium">
-                  <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("userName")}>
+          <Table className="min-w-[48rem] text-sm">
+            <TableHeader>
+              <TableRow className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                <TableHead className="px-4 py-3 font-medium">
+                  <Button type="button" variant="ghost" size="sm" className="h-auto justify-start px-0 font-medium" onClick={() => toggleSort("userName")}>
                     {t("用户名")}{sort === "userName" ? (dir === "asc" ? " ↑" : " ↓") : ""}
-                  </button>
-                </th>
-                <th className="px-4 py-3 font-medium">
-                  <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("email")}>
+                  </Button>
+                </TableHead>
+                <TableHead className="px-4 py-3 font-medium">
+                  <Button type="button" variant="ghost" size="sm" className="h-auto justify-start px-0 font-medium" onClick={() => toggleSort("email")}>
                     {t("邮箱")}{sort === "email" ? (dir === "asc" ? " ↑" : " ↓") : ""}
-                  </button>
-                </th>
-                <th className="px-4 py-3 font-medium">{t("状态")}</th>
-                <th className="px-4 py-3 font-medium">
-                  <button type="button" className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => toggleSort("createdAt")}>
+                  </Button>
+                </TableHead>
+                <TableHead className="px-4 py-3 font-medium">{t("状态")}</TableHead>
+                <TableHead className="px-4 py-3 font-medium">
+                  <Button type="button" variant="ghost" size="sm" className="h-auto justify-start px-0 font-medium" onClick={() => toggleSort("createdAt")}>
                     {t("注册时间")}{sort === "createdAt" ? (dir === "asc" ? " ↑" : " ↓") : ""}
-                  </button>
-                </th>
-                <th className="px-4 py-3 font-medium text-right">{t("操作")}</th>
-              </tr>
-            </thead>
-            <tbody>
+                  </Button>
+                </TableHead>
+                <TableHead className="px-4 py-3 font-medium text-right">{t("操作")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {(result?.items ?? []).map((user) => (
-                <tr key={user.id} className="border-b last:border-0 hover:bg-muted/20">
-                  <td
+                <TableRow key={user.id} className="border-b last:border-0 hover:bg-muted/20">
+                  <TableCell
                     className="cursor-pointer px-4 py-3 font-medium"
                     onClick={() => updateParams({ user: user.id })}
                   >
                     {user.userName}
                     {user.nickname ? <span className="ml-2 text-xs text-muted-foreground">{user.nickname}</span> : null}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{user.email ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={
-                        user.status === 0
-                          ? "rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
-                          : user.status === 1
-                            ? "rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300"
-                            : "rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground"
-                      }
-                    >
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-muted-foreground">{user.email ?? "—"}</TableCell>
+                  <TableCell className="px-4 py-3">
+                    <Badge variant={user.status === 0 ? "success" : user.status === 1 ? "warning" : "secondary"}>
                       {t(USER_STATUS[user.status] ?? String(user.status))}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{new Date(user.createdAt).toLocaleString("zh-CN")}</td>
-                  <td className="space-x-2 px-4 py-3 text-right">
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="px-4 py-3 text-muted-foreground">{new Date(user.createdAt).toLocaleString("zh-CN")}</TableCell>
+                  <TableCell className="space-x-2 px-4 py-3 text-right">
                     {/* 自己那一行不提供冻结/重置（server 侧另有硬门禁）：两个操作都会把当前管理会话锁在门外。
                         已注销（终态）的行同样不提供——状态端点只接受 Active/Frozen 互转。 */}
                     {me?.subject !== user.id && user.status !== 2 && (
@@ -727,26 +721,26 @@ export default function UsersPage() {
                         </Button>
                       </>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
               {/* 加载与空态区分(#31):result 为 null 是加载中,空数组才是真的没有匹配。 */}
               {!result && !error && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <TableRow>
+                  <TableCell colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                     {t("正在加载…")}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
               {result && result.items.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                <TableRow>
+                  <TableCell colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                     {t("没有匹配的账号")}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
@@ -779,13 +773,13 @@ export default function UsersPage() {
           // 出现即滚动到视口中央(#25):一次性密码不可再取,不能让用户翻找。
           if (node && newPassword) node.scrollIntoView({ behavior: "smooth", block: "center" })
         }}>
-          <Card className="border-amber-300 bg-amber-50 dark:border-amber-600 dark:bg-amber-950/50">
+          <Card className="border-warning/40 bg-warning/10">
             <CardHeader>
-              <CardTitle className="text-sm text-amber-800 dark:text-amber-300">{t("新密码（仅显示这一次）")}</CardTitle>
+              <CardTitle className="text-sm text-warning">{t("新密码（仅显示这一次）")}</CardTitle>
               <CardDescription>{t("请立即复制并安全送达用户；服务端只保留哈希，无法再次取出。")}</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-wrap items-center gap-3">
-              <code className="rounded bg-white px-3 py-2 font-mono text-base dark:bg-muted">{newPassword}</code>
+              <code className="rounded bg-card px-3 py-2 font-mono text-base dark:bg-muted">{newPassword}</code>
               <Button variant="outline" size="sm" onClick={() => void copyNewPassword()}>
                 {copied ? t("已复制") : t("复制")}
               </Button>
@@ -828,9 +822,7 @@ export default function UsersPage() {
               <span>{t("角色：")}</span>
               {detail.roles.length > 0 ? (
                 detail.roles.map((role) => (
-                  <span key={role} className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                    {role}
-                  </span>
+                  <Badge key={role} variant="secondary">{role}</Badge>
                 ))
               ) : (
                 <span>{t("无角色")}</span>
@@ -918,28 +910,28 @@ export default function UsersPage() {
               <p className="text-sm text-muted-foreground">{t("正在加载会话…")}</p>
             ) : sessions.length > 0 ? (
               <div className="overflow-x-auto rounded border">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-muted/50 text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">{t("客户端")}</th>
-                      <th className="px-3 py-2 font-medium">{t("创建时间")}</th>
-                      <th className="px-3 py-2 font-medium">{t("过期时间")}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table className="w-full text-left text-sm">
+                  <TableHeader className="bg-muted/50 text-muted-foreground">
+                    <TableRow>
+                      <TableHead className="px-3 py-2 font-medium">{t("客户端")}</TableHead>
+                      <TableHead className="px-3 py-2 font-medium">{t("创建时间")}</TableHead>
+                      <TableHead className="px-3 py-2 font-medium">{t("过期时间")}</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {sessions.map((session) => (
-                      <tr key={session.id} className="border-t">
-                        <td className="px-3 py-2 font-mono text-xs">{session.clientId ?? "—"}</td>
-                        <td className="px-3 py-2 text-muted-foreground">
+                      <TableRow key={session.id} className="border-t">
+                        <TableCell className="px-3 py-2 font-mono text-xs">{session.clientId ?? "—"}</TableCell>
+                        <TableCell className="px-3 py-2 text-muted-foreground">
                           {session.creationDate ? new Date(session.creationDate).toLocaleString("zh-CN") : "—"}
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground">
+                        </TableCell>
+                        <TableCell className="px-3 py-2 text-muted-foreground">
                           {session.expirationDate ? new Date(session.expirationDate).toLocaleString("zh-CN") : "—"}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">{t("暂无有效会话。")}</p>
@@ -1013,22 +1005,22 @@ export default function UsersPage() {
           <CardContent className="space-y-4">
             {claims.length > 0 ? (
               <div className="overflow-x-auto rounded border">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-muted/50 text-muted-foreground">
-                    <tr>
-                      <th className="px-3 py-2 font-medium">{t("类型")}</th>
-                      <th className="px-3 py-2 font-medium">{t("值")}</th>
-                      <th className="px-3 py-2 font-medium">Scope</th>
-                      <th className="px-3 py-2" />
-                    </tr>
-                  </thead>
-                  <tbody>
+                <Table className="w-full text-left text-sm">
+                  <TableHeader className="bg-muted/50 text-muted-foreground">
+                    <TableRow>
+                      <TableHead className="px-3 py-2 font-medium">{t("类型")}</TableHead>
+                      <TableHead className="px-3 py-2 font-medium">{t("值")}</TableHead>
+                      <TableHead className="px-3 py-2 font-medium">Scope</TableHead>
+                      <TableHead className="px-3 py-2" />
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {claims.map((claim) => (
-                      <tr key={claim.id} className="border-t">
-                        <td className="px-3 py-2 font-mono text-xs">{claim.claimType}</td>
-                        <td className="px-3 py-2">{claim.claimValue}</td>
-                        <td className="px-3 py-2 font-mono text-xs">{claim.scope}</td>
-                        <td className="px-3 py-2 text-right">
+                      <TableRow key={claim.id} className="border-t">
+                        <TableCell className="px-3 py-2 font-mono text-xs">{claim.claimType}</TableCell>
+                        <TableCell className="px-3 py-2">{claim.claimValue}</TableCell>
+                        <TableCell className="px-3 py-2 font-mono text-xs">{claim.scope}</TableCell>
+                        <TableCell className="px-3 py-2 text-right">
                           <Button
                             variant="outline"
                             size="sm"
@@ -1037,11 +1029,11 @@ export default function UsersPage() {
                           >
                             删除
                           </Button>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">{t("暂无自定义 Claims。")}</p>

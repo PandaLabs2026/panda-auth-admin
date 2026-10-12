@@ -3,11 +3,15 @@ import { useTranslation } from "react-i18next"
 import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { serverError, apiGet, AUDIT_ACTION, type AdminAuditEntry, type LoginLogEntry, type PageResult } from "@/lib/api"
 
 /**
@@ -168,95 +172,103 @@ export default function AuditPage() {
         {result && <span className="pb-2 text-sm text-muted-foreground">{t("共 {{total}} 条", { total: result.total })}</span>}
       </div>
 
+      <Separator />
+
       {error && <p className="text-destructive">{error}</p>}
 
       <Card>
         <CardContent className="overflow-x-auto p-0">
           {tab === "logins" ? (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">{t("时间")}</th>
-                  <th className="px-4 py-3 font-medium">{t("用户")}</th>
-                  <th className="px-4 py-3 font-medium">{t("结果")}</th>
-                  <th className="px-4 py-3 font-medium">{t("失败原因")}</th>
-                  <th className="px-4 py-3 font-medium">IP</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table className="min-w-[56rem] text-sm" aria-busy={!logins && !error}>
+              <TableHeader>
+                <TableRow className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                  <TableHead className="px-4 py-3 font-medium">{t("时间")}</TableHead>
+                  <TableHead className="px-4 py-3 font-medium">{t("用户")}</TableHead>
+                  <TableHead className="px-4 py-3 font-medium">{t("结果")}</TableHead>
+                  <TableHead className="px-4 py-3 font-medium">{t("失败原因")}</TableHead>
+                  <TableHead className="px-4 py-3 font-medium">IP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {(logins?.items ?? []).map((log) => (
-                  <tr key={log.id} className="border-b last:border-0 hover:bg-muted/20">
-                    <td className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString("zh-CN")}</td>
-                    <td className="px-4 py-2.5">{log.userName}</td>
-                    <td className="px-4 py-2.5">
+                  <TableRow key={log.id} className="border-b last:border-0 hover:bg-muted/20">
+                    <TableCell className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString("zh-CN")}</TableCell>
+                    <TableCell className="px-4 py-2.5">{log.userName}</TableCell>
+                    <TableCell className="px-4 py-2.5">
                       {log.succeeded ? (
-                        <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs text-emerald-700">{t("成功")}</span>
+                        <Badge variant="success">{t("成功")}</Badge>
                       ) : (
-                        <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs text-red-700">{t("失败")}</span>
+                        <Badge variant="destructive">{t("失败")}</Badge>
                       )}
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{log.failureReason ?? "—"}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{log.ipAddress ?? "—"}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="px-4 py-2.5 text-muted-foreground">{log.failureReason ?? "—"}</TableCell>
+                    <TableCell className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{log.ipAddress ?? "—"}</TableCell>
+                  </TableRow>
                 ))}
                 {!logins && !error && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                      {t("正在加载…")}
-                    </td>
-                  </tr>
+                  <TableRow>
+                    <TableCell colSpan={5} className="px-4 py-8">
+                      <div role="status" className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <Skeleton className="h-4 w-36" />
+                        <span>{t("正在加载…")}</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 )}
                 {logins && logins.items.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  <TableRow>
+                    <TableCell colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                       {t("该时间范围内没有记录")}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">{t("时间")}</th>
-                  <th className="px-4 py-3 font-medium">{t("操作者")}</th>
-                  <th className="px-4 py-3 font-medium">动作</th>
-                  <th className="px-4 py-3 font-medium">{t("目标")}</th>
-                  <th className="px-4 py-3 font-medium">IP</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table className="min-w-[56rem] text-sm" aria-busy={!admin && !error}>
+              <TableHeader>
+                <TableRow className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                  <TableHead className="px-4 py-3 font-medium">{t("时间")}</TableHead>
+                  <TableHead className="px-4 py-3 font-medium">{t("操作者")}</TableHead>
+                  <TableHead className="px-4 py-3 font-medium">动作</TableHead>
+                  <TableHead className="px-4 py-3 font-medium">{t("目标")}</TableHead>
+                  <TableHead className="px-4 py-3 font-medium">IP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {(admin?.items ?? []).map((log) => (
-                  <tr key={log.id} className="border-b last:border-0 hover:bg-muted/20">
-                    <td className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString("zh-CN")}</td>
-                    <td className="px-4 py-2.5">{log.actorUserName ?? log.actorUserId}</td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-xs">
+                  <TableRow key={log.id} className="border-b last:border-0 hover:bg-muted/20">
+                    <TableCell className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString("zh-CN")}</TableCell>
+                    <TableCell className="px-4 py-2.5">{log.actorUserName ?? log.actorUserId}</TableCell>
+                    <TableCell className="whitespace-nowrap px-4 py-2.5 text-xs">
                       <span>{t(AUDIT_ACTION[log.action] ?? log.action)}</span>
                       <span className="ml-1.5 font-mono text-muted-foreground">{log.action}</span>
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="px-4 py-2.5 font-mono text-xs text-muted-foreground">
                       {log.targetType}:{log.targetId ?? ""}
-                    </td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{log.ipAddress ?? "—"}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="px-4 py-2.5 font-mono text-xs text-muted-foreground">{log.ipAddress ?? "—"}</TableCell>
+                  </TableRow>
                 ))}
                 {!admin && !error && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
-                      {t("正在加载…")}
-                    </td>
-                  </tr>
+                  <TableRow>
+                    <TableCell colSpan={5} className="px-4 py-8">
+                      <div role="status" className="flex items-center gap-3 text-sm text-muted-foreground">
+                        <Skeleton className="h-4 w-36" />
+                        <span>{t("正在加载…")}</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 )}
                 {admin && admin.items.length === 0 && (
-                  <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                  <TableRow>
+                    <TableCell colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
                       {t("该时间范围内没有记录")}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 )}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>

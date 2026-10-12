@@ -2,6 +2,8 @@ import { useEffect, useState } from "react"
 import { Link } from "react-router-dom"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { type Session } from "@/lib/api"
 import { NAV } from "@/lib/nav"
 import { getSession } from "@/lib/session"
@@ -55,9 +57,31 @@ export default function DashboardPage() {
   // 若垂直居中，内容出现时整块上跳约半屏，被当成布局故障上报（2026-10-01）。
   if (loading && !session && !error) {
     return (
-      <div className="flex items-center gap-3">
-        <img src="/admin/apple-touch-icon.png" alt="" className="h-12 w-12 rounded-xl animate-pulse" />
-        <span className="text-sm text-muted-foreground">{t("正在验证登录状态…")}</span>
+      <div role="status" aria-label={t("正在验证登录状态…")} className="space-y-6">
+        <div className="grid gap-6 lg:grid-cols-2">
+          {[0, 1].map((card) => (
+            <Card key={card}>
+              <CardHeader className="space-y-3">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-48" />
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Skeleton className="h-7 w-28" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-3 w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Card>
+          <CardHeader className="space-y-3">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-3 w-64" />
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {MODULES.map((module) => <Skeleton key={module.to} className="h-20 w-full" />)}
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -84,9 +108,7 @@ export default function DashboardPage() {
             <CardContent className="space-y-3 text-sm">
               <div className="flex flex-wrap gap-1.5">
                 {(session.roles.length > 0 ? session.roles : ["无角色"]).map((role) => (
-                  <span key={role} className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                    {role}
-                  </span>
+                  <Badge key={role} variant="secondary">{role}</Badge>
                 ))}
               </div>
               <p className="text-muted-foreground">
@@ -103,14 +125,10 @@ export default function DashboardPage() {
               <CardDescription>
                 {discovery ? (
                   <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
-                    {t("在线 · {{issuer}}", { issuer: discovery.issuer })}
+                    <Badge variant="success">{t("在线 · {{issuer}}", { issuer: discovery.issuer })}</Badge>
                   </span>
                 ) : (
-                  <span className="flex items-center gap-1.5">
-                    <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground/40" />
-                    {t("discovery 不可达")}
-                  </span>
+                  <Badge variant="warning">{t("discovery 不可达")}</Badge>
                 )}
               </CardDescription>
             </CardHeader>
@@ -159,14 +177,12 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {MODULES.map((module) => (
-            <Link
-              key={module.to}
-              to={module.to}
-              className="rounded-lg border bg-muted/20 p-4 transition-colors hover:border-primary/40 hover:bg-muted/40"
-            >
-              <p className="text-sm font-medium">{t(module.label)}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{t(module.desc)}</p>
-            </Link>
+            <Card key={module.to} className="p-0 transition-colors hover:border-primary/40 hover:bg-muted/20">
+              <Link to={module.to} className="block h-full rounded-lg p-4">
+                <p className="text-sm font-medium">{t(module.label)}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{t(module.desc)}</p>
+              </Link>
+            </Card>
           ))}
         </CardContent>
       </Card>

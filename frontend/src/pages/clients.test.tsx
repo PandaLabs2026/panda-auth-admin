@@ -91,3 +91,25 @@ describe("ClientsPage list errors", () => {
     expect(await screen.findByText("network down")).toBeInTheDocument()
   })
 })
+
+describe("ClientsPage long callback URIs", () => {
+  it("clients keep long redirect URIs inside the table container", async () => {
+    const longUri = `https://client.example.com/${"callback-segment/".repeat(24)}return`
+    const longDetail = { ...detail("admin-web", "管理台"), redirectUris: [longUri] }
+    vi.stubGlobal("fetch", vi.fn((path: string) => {
+      if (path === "/admin/api/clients") return Promise.resolve(json(list))
+      if (path === "/admin/api/clients/options") return Promise.resolve(json({ permissionGroups: [] }))
+      if (path === "/admin/api/clients/admin-web") return Promise.resolve(json(longDetail))
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    }))
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/?client=admin-web"]}><ClientsPage /></MemoryRouter>,
+    )
+
+    const redirectField = await screen.findByLabelText("RedirectUris（至少一条）")
+    expect(redirectField).toHaveValue(longUri)
+    expect(redirectField.parentElement).toHaveClass("overflow-x-auto")
+    expect(container.querySelector('[data-slot="table-container"]')).toHaveClass("overflow-x-auto")
+  })
+})

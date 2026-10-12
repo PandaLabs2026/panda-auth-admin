@@ -38,4 +38,13 @@ describe("DashboardPage", () => {
     expect(screen.getByText("alice@example.com")).toBeInTheDocument()
     expect(fetchMock).toHaveBeenCalledWith("/admin/api/session", expect.anything())
   })
+
+  it("keeps a shadcn skeleton at the dashboard content anchor while loading", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})))
+
+    const { container } = render(<MemoryRouter><DashboardPage /></MemoryRouter>)
+
+    expect(screen.getByRole("status")).toBeInTheDocument()
+    expect(container.querySelector('[data-slot="skeleton"]')).not.toBeNull()
+  })
 })
