@@ -20,7 +20,7 @@ afterEach(() => {
 })
 
 describe("AppShell language switcher", () => {
-  it("uses the dedicated transparent admin mark at 36px", async () => {
+  it("uses the registered horizontal PandaAuth lockup at 36px", async () => {
     vi.stubGlobal("fetch", vi.fn((path: string) => {
       if (path === "/admin/api/session") {
         return Promise.resolve(json({ subject: "admin-1", name: "Alice", email: null, nickname: null, roles: ["admin"], portalHomeUrl: null }))
@@ -32,9 +32,10 @@ describe("AppShell language switcher", () => {
     const mark = container.querySelector("img")
 
     expect(mark).not.toBeNull()
-    expect(mark).toHaveAttribute("src", "/admin/pandaauth-admin-mark-64.png")
-    expect(mark).toHaveClass("h-9", "w-9")
-    expect(mark).not.toHaveClass("rounded-lg")
+    expect(mark).toHaveAttribute("src", "/admin/pandaauth-logo-horizontal.png")
+    expect(mark).toHaveAttribute("alt", "PandaAuth")
+    expect(mark).toHaveClass("h-9", "w-auto", "object-contain")
+    expect(mark?.getAttribute("alt")).not.toMatch(/by\s+PandaLabs/i)
   })
 
   it("renders route navigation inside the shadcn sidebar", () => {

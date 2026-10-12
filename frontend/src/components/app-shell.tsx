@@ -121,8 +121,7 @@ export default function AppShell() {
 
   const brand = (
     <div className="flex min-w-0 items-center gap-2.5 px-2 py-2 text-base font-bold text-primary">
-      <img src="/admin/pandaauth-admin-mark-64.png" alt="" className="h-9 w-9" />
-      PandaAuth
+      <img src="/admin/pandaauth-logo-horizontal.png" alt="PandaAuth" className="h-9 w-auto max-w-full object-contain object-left" />
     </div>
   )
 
