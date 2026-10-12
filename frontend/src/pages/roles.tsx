@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
@@ -242,21 +243,21 @@ export default function RolesPage() {
               <p className="text-destructive">{claimsError}</p>
             ) : claims.length > 0 ? (
               <div className="overflow-x-auto rounded border">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-muted/50 text-muted-foreground">
-                    <tr><th className="px-3 py-2">{t("类型")}</th><th className="px-3 py-2">{t("值")}</th><th className="px-3 py-2">Scope</th><th className="px-3 py-2" /></tr>
-                  </thead>
-                  <tbody>
+                <Table className="w-full text-left text-sm">
+                  <TableHeader className="bg-muted/50 text-muted-foreground">
+                    <TableRow><TableHead className="px-3 py-2">{t("类型")}</TableHead><TableHead className="px-3 py-2">{t("值")}</TableHead><TableHead className="px-3 py-2">Scope</TableHead><TableHead className="px-3 py-2" /></TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {claims.map((claim) => (
-                      <tr key={claim.id} className="border-t">
-                        <td className="px-3 py-2 font-mono text-xs">{claim.claimType}</td>
-                        <td className="px-3 py-2">{claim.claimValue}</td>
-                        <td className="px-3 py-2 font-mono text-xs">{claim.scope}</td>
-                        <td className="px-3 py-2 text-right"><Button variant="outline" size="sm" disabled={claimsBusy} onClick={() => setClaimPendingDelete(claim)}>删除</Button></td>
-                      </tr>
+                      <TableRow key={claim.id} className="border-t">
+                        <TableCell className="px-3 py-2 font-mono text-xs">{claim.claimType}</TableCell>
+                        <TableCell className="px-3 py-2">{claim.claimValue}</TableCell>
+                        <TableCell className="px-3 py-2 font-mono text-xs">{claim.scope}</TableCell>
+                        <TableCell className="px-3 py-2 text-right"><Button variant="outline" size="sm" disabled={claimsBusy} onClick={() => setClaimPendingDelete(claim)}>删除</Button></TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             ) : <p className="text-sm text-muted-foreground">{t("暂无自定义 Claims。")}</p>}
             {!claimsLoading && !claimsError && (

@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Textarea } from "@/components/ui/textarea"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -184,7 +186,7 @@ export default function ClientsPage() {
     <div className="space-y-6">
       {listError && <p className="text-destructive">{listError}</p>}
       {error && <p className="text-destructive">{error}</p>}
-      {notice && <p className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{notice}</p>}
+      {notice && <p className="rounded-md border border-primary/20 bg-primary/10 px-3 py-2 text-sm text-primary">{notice}</p>}
 
       <Card>
         <CardHeader>
@@ -192,45 +194,45 @@ export default function ClientsPage() {
           <CardDescription>{t("点击查看与编辑；机密客户端（confidential）持有密钥，公共客户端（public）依赖 PKCE。")}</CardDescription>
         </CardHeader>
         <CardContent className="overflow-x-auto p-0">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                <th className="px-4 py-3 font-medium">Client ID</th>
-                <th className="px-4 py-3 font-medium">{t("名称")}</th>
-                <th className="px-4 py-3 font-medium">{t("类型")}</th>
-                <th className="px-4 py-3 font-medium">{t("授权方式")}</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="min-w-[48rem] text-sm">
+            <TableHeader>
+              <TableRow className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                <TableHead className="px-4 py-3 font-medium">Client ID</TableHead>
+                <TableHead className="px-4 py-3 font-medium">{t("名称")}</TableHead>
+                <TableHead className="px-4 py-3 font-medium">{t("类型")}</TableHead>
+                <TableHead className="px-4 py-3 font-medium">{t("授权方式")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {(list?.items ?? []).map((client) => (
-                <tr
+                <TableRow
                   key={client.clientId}
                   className={`cursor-pointer border-b last:border-0 hover:bg-muted/20 ${clientId === client.clientId ? "bg-primary/5" : ""}`}
                   onClick={() => updateParams({ client: client.clientId })}
                 >
-                  <td className="px-4 py-3 font-mono text-xs">{client.clientId}</td>
-                  <td className="px-4 py-3">{client.displayName ?? "—"}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{client.clientType}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{client.consentType}</td>
-                </tr>
+                  <TableCell className="px-4 py-3 font-mono text-xs">{client.clientId}</TableCell>
+                  <TableCell className="px-4 py-3">{client.displayName ?? "—"}</TableCell>
+                  <TableCell className="px-4 py-3 text-muted-foreground">{client.clientType}</TableCell>
+                  <TableCell className="px-4 py-3 text-muted-foreground">{client.consentType}</TableCell>
+                </TableRow>
               ))}
               {/* 加载与空态区分(#31):此前 clients 表既无加载态也无空态。 */}
               {!list && !listError && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                <TableRow>
+                  <TableCell colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
                     {t("正在加载…")}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
               {list && list.items.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
+                <TableRow>
+                  <TableCell colSpan={4} className="px-4 py-8 text-center text-muted-foreground">
                     {t("没有客户端")}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               )}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
 
@@ -244,21 +246,25 @@ export default function ClientsPage() {
             <CardContent className="grid gap-4 md:grid-cols-2">
               <div className="grid gap-1.5">
                 <Label htmlFor="redirect">{t("RedirectUris（至少一条）")}</Label>
-                <textarea
-                  id="redirect"
-                  className="min-h-28 rounded-md border bg-background p-2 font-mono text-xs"
-                  value={redirectUris}
-                  onChange={(event) => setRedirectUris(event.target.value)}
-                />
+                <div className="min-w-0 overflow-x-auto">
+                  <Textarea
+                    id="redirect"
+                    className="min-h-28 min-w-0 font-mono text-xs"
+                    value={redirectUris}
+                    onChange={(event) => setRedirectUris(event.target.value)}
+                  />
+                </div>
               </div>
               <div className="grid gap-1.5">
                 <Label htmlFor="postlogout">PostLogoutRedirectUris</Label>
-                <textarea
-                  id="postlogout"
-                  className="min-h-28 rounded-md border bg-background p-2 font-mono text-xs"
-                  value={postLogoutUris}
-                  onChange={(event) => setPostLogoutUris(event.target.value)}
-                />
+                <div className="min-w-0 overflow-x-auto">
+                  <Textarea
+                    id="postlogout"
+                    className="min-h-28 min-w-0 font-mono text-xs"
+                    value={postLogoutUris}
+                    onChange={(event) => setPostLogoutUris(event.target.value)}
+                  />
+                </div>
               </div>
               <div className="md:col-span-2">
                 <Button size="sm" disabled={busy} onClick={() => void saveUris()}>
@@ -309,9 +315,9 @@ export default function ClientsPage() {
           </Card>
 
           {selected.clientType === "confidential" && (
-            <Card className="border-amber-300 dark:border-amber-600">
+            <Card className="border-warning/40">
               <CardHeader>
-                <CardTitle className="text-base text-amber-800 dark:text-amber-300">{t("密钥轮换")}</CardTitle>
+                <CardTitle className="text-base text-warning">{t("密钥轮换")}</CardTitle>
                 <CardDescription>
                   {t("生成 32 字节随机密钥，明文只显示一次；旧密钥立即作废。第一方客户端（admin-web / me-web）轮换后须同步服务器 env 并重跑迁移对账。")}
                 </CardDescription>
