@@ -64,29 +64,31 @@ function SidebarNavigation() {
   const { setOpenMobile } = useSidebar()
 
   return (
-    <SidebarGroup>
-      <SidebarGroupContent>
-        <SidebarMenu>
-          {NAV.map((item, index) => {
-            const Icon = NAV_ICONS[index]
-            return (
-              <SidebarMenuItem key={item.to}>
-                <SidebarMenuButton asChild tooltip={t(item.label)}>
-                  <NavLink
-                    to={item.to}
-                    end={item.to === "/"}
-                    onClick={() => setOpenMobile(false)}
-                  >
-                    <Icon />
-                    <span>{t(item.label)}</span>
-                  </NavLink>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )
-          })}
-        </SidebarMenu>
-      </SidebarGroupContent>
-    </SidebarGroup>
+    <nav>
+      <SidebarGroup>
+        <SidebarGroupContent>
+          <SidebarMenu>
+            {NAV.map((item, index) => {
+              const Icon = NAV_ICONS[index]
+              return (
+                <SidebarMenuItem key={item.to}>
+                  <SidebarMenuButton asChild tooltip={t(item.label)}>
+                    <NavLink
+                      to={item.to}
+                      end={item.to === "/"}
+                      onClick={() => setOpenMobile(false)}
+                    >
+                      <Icon />
+                      <span>{t(item.label)}</span>
+                    </NavLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            })}
+          </SidebarMenu>
+        </SidebarGroupContent>
+      </SidebarGroup>
+    </nav>
   )
 }
 

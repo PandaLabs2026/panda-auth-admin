@@ -48,6 +48,7 @@ describe("AppShell language switcher", () => {
     const { container } = render(<MemoryRouter><AppShell /></MemoryRouter>)
 
     expect(container.querySelector('[data-slot="sidebar"]')).not.toBeNull()
+    expect(screen.getByRole("navigation")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "概览" })).toBeInTheDocument()
   })
 
