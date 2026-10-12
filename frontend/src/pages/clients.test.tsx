@@ -93,7 +93,7 @@ describe("ClientsPage list errors", () => {
 })
 
 describe("ClientsPage long callback URIs", () => {
-  it("clients keep long redirect URIs inside the table container", async () => {
+  it("bounds long redirect URI editors and the client list table", async () => {
     const longUri = `https://client.example.com/${"callback-segment/".repeat(24)}return`
     const longDetail = { ...detail("admin-web", "管理台"), redirectUris: [longUri] }
     vi.stubGlobal("fetch", vi.fn((path: string) => {
