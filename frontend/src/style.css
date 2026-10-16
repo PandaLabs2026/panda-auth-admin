@@ -1,4 +1,7 @@
-@import "tailwindcss";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+/* shadcn/typeset 排版层(官方正典原文,机制说明见文件头;模板 v0.5.2 起随样式基线入库)。 */
+@import './typeset.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -7,6 +10,7 @@
  * 镜像自 panda-auth/design/tokens.css（2026-09 定稿）：主题钢蓝 #2E6F96、结构墨色 #2B3438，
  * 森林绿只作焦点环功能色；深色档为钢蓝提亮 #6FA6C9 + 墨色推导底，焦点环薄荷绿 #8DD6B2。
  * 改令牌先改 design/tokens.css 正本，再整块同步此处。
+ * 应用身份留在令牌层（组件层收敛于模板正典）：结构/字体 token 对齐模板 style.css。
  */
 :root {
   color-scheme: light;
@@ -26,6 +30,7 @@
   --accent: #ebf2f7;
   --accent-foreground: #25597a;
   --destructive: #b91c1c;
+  --destructive-foreground: #ffffff;
   --overlay: #000000;
   --border: #e5e7eb;
   --input: #d1d5db;
@@ -40,6 +45,10 @@
   --sidebar-accent-foreground: var(--accent-foreground);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
+  /* 字体 token:全站单源(模板 v0.3.8 起,typeset 的 heading/mono 旋钮也消费这里)。 */
+  --font-sans: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-heading: var(--font-sans);
+  --font-mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, monospace;
 }
 
 .dark {
@@ -59,6 +68,7 @@
   --accent: #273136;
   --accent-foreground: #82b6d6;
   --destructive: #e07070;
+  --destructive-foreground: #0e1f2b;
   --overlay: #000000;
   --border: rgba(255, 255, 255, 0.1);
   --input: rgba(255, 255, 255, 0.1);
@@ -93,6 +103,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-overlay: var(--overlay);
   --color-border: var(--border);
   --color-input: var(--input);
@@ -107,6 +118,8 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
 @layer base {
@@ -115,11 +128,13 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: system-ui, "Segoe UI", "Microsoft YaHei", sans-serif;
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.6;
   }
 }
 
-/* 登录页品牌面板：钢蓝渐变 + 竹纹装饰（品牌令牌同步自 index.css / design/tokens.css）。 */
+/* 登录页品牌面板：钢蓝渐变 + 竹纹装饰（品牌令牌同步自 design/tokens.css）。 */
 .login-brand-panel {
   background: linear-gradient(160deg, #2e6f96 0%, #25597a 60%, #1c4560 100%);
 }
@@ -127,4 +142,24 @@
   background-image:
     repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.05) 0 2px, transparent 2px 46px),
     repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 90px);
+}
+
+/*
+ * typeset preset(应用定制层,官方模式:preset 定义在应用 CSS,不进正典文件;
+ * 与模板 style.css 同形)。故意不加 @layer:未分层样式优先级高于 typeset.css
+ * 的 @layer components,变量覆盖天然生效。用法:<div className="typeset typeset-docs">。
+ */
+.typeset-docs {
+  --typeset-font-body: var(--font-sans);
+  --typeset-font-heading: var(--font-heading);
+  --typeset-font-mono: var(--font-mono);
+  --typeset-size: 15px;
+  --typeset-leading: 1.75;
+  --typeset-flow: 1.25em;
+}
+
+/* 聊天气泡节奏:紧凑行距与块距(官方 typeset-chat preset 同值)。 */
+.typeset-chat {
+  --typeset-leading: 1.6;
+  --typeset-flow: 1em;
 }

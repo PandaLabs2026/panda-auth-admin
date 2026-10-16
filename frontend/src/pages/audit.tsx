@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
-import { useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router"
 
+import SemanticBadge from "@/components/semantic-badge"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,14 +12,16 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { serverError, apiGet, AUDIT_ACTION, type AdminAuditEntry, type LoginLogEntry, type PageResult } from "@/lib/api"
+import { useI18n } from "@/lib/i18n"
 
 /**
  * 审计查询（0.3）：登录日志与管理操作日志双视图，只读 + 过滤 + 分页。
  * 视图/时间/维度过滤/页码全部进 URL(#27);维度过滤(#23)对齐 server 契约
  * (logins: userName/succeeded;admin: actor/action)。
+ * 时间范围过滤是 datetime-local 输入,不在模板 FilterToolbar(搜索+下拉)覆盖内,保持自定义行。
  */
 export default function AuditPage() {
-  const { t } = useTranslation()
+  const { t } = useI18n()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const tab = searchParams.get("tab") === "admin" ? "admin" : "logins"
@@ -164,17 +165,17 @@ export default function AuditPage() {
                 className="w-44"
                 value={action}
                 onChange={(event) => updateParams({ action: event.target.value, page: null }, { replace: true })}
-                placeholder={t("动作", { defaultValue: "" }) === "" ? "如 user.freeze" : "如 user.freeze"}
+                placeholder="user.freeze"
               />
             </div>
           </>
         )}
-        {result && <span className="pb-2 text-sm text-muted-foreground">{t("共 {{total}} 条", { total: result.total })}</span>}
+        {result && <span className="pb-2 text-sm text-muted-foreground">{t("共 {} 条", { total: result.total })}</span>}
       </div>
 
       <Separator />
 
-      {error && <p className="text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-destructive">{error}</p>}
 
       <Card>
         <CardContent className="overflow-x-auto p-0">
@@ -192,13 +193,13 @@ export default function AuditPage() {
               <TableBody>
                 {(logins?.items ?? []).map((log) => (
                   <TableRow key={log.id} className="border-b last:border-0 hover:bg-muted/20">
-                    <TableCell className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString("zh-CN")}</TableCell>
+                    <TableCell className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</TableCell>
                     <TableCell className="px-4 py-2.5">{log.userName}</TableCell>
                     <TableCell className="px-4 py-2.5">
                       {log.succeeded ? (
-                        <Badge variant="success">{t("成功")}</Badge>
+                        <SemanticBadge variant="success">{t("成功")}</SemanticBadge>
                       ) : (
-                        <Badge variant="destructive">{t("失败")}</Badge>
+                        <SemanticBadge variant="warning">{t("失败")}</SemanticBadge>
                       )}
                     </TableCell>
                     <TableCell className="px-4 py-2.5 text-muted-foreground">{log.failureReason ?? "—"}</TableCell>
@@ -230,7 +231,7 @@ export default function AuditPage() {
                 <TableRow className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                   <TableHead className="px-4 py-3 font-medium">{t("时间")}</TableHead>
                   <TableHead className="px-4 py-3 font-medium">{t("操作者")}</TableHead>
-                  <TableHead className="px-4 py-3 font-medium">动作</TableHead>
+                  <TableHead className="px-4 py-3 font-medium">{t("动作")}</TableHead>
                   <TableHead className="px-4 py-3 font-medium">{t("目标")}</TableHead>
                   <TableHead className="px-4 py-3 font-medium">IP</TableHead>
                 </TableRow>
@@ -238,7 +239,7 @@ export default function AuditPage() {
               <TableBody>
                 {(admin?.items ?? []).map((log) => (
                   <TableRow key={log.id} className="border-b last:border-0 hover:bg-muted/20">
-                    <TableCell className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString("zh-CN")}</TableCell>
+                    <TableCell className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</TableCell>
                     <TableCell className="px-4 py-2.5">{log.actorUserName ?? log.actorUserId}</TableCell>
                     <TableCell className="whitespace-nowrap px-4 py-2.5 text-xs">
                       <span>{t(AUDIT_ACTION[log.action] ?? log.action)}</span>
@@ -275,7 +276,7 @@ export default function AuditPage() {
 
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">
-          第 {page} / {totalPages} 页
+          {t("第 {} / {} 页", { page, totalPages })}
         </span>
         <div className="space-x-2">
           <Button

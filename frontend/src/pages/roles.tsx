@@ -1,24 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react"
-import { useTranslation } from "react-i18next"
-import { useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router"
 
+import ConfirmAction from "@/components/patterns/ConfirmAction"
+import FilterToolbar from "@/components/patterns/FilterToolbar"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
 import { serverError, apiGet, apiSend, type ClaimRequest, type PageResult, type RoleClaim, type RoleSummary } from "@/lib/api"
 import { clearDraft, consumeDraft, saveDraft } from "@/lib/drafts"
+import { notify } from "@/lib/notify"
+import { useI18n } from "@/lib/i18n"
 
 const EMPTY_CLAIM: ClaimRequest = { claimType: "panda:", claimValue: "", scope: "api" }
 
@@ -26,13 +19,20 @@ function claimsPath(roleId: string): string {
   return `/admin/api/roles/${encodeURIComponent(roleId)}/claims`
 }
 
+/** 写操作失败的统一出口:服务端原文/en 词典译码后交给 notify 驻留展示。 */
+function toUserMessage(cause: unknown): Error {
+  return new Error(serverError(cause))
+}
+
 /**
  * 角色目录只读；此页只管理已存在角色的自定义 Claims。
- * 搜索/分页/选中角色进 URL(#27);选中角色由 role 参数驱动,参数清空即收起 Claims 面板。
+ * 搜索/分页/选中角色进 URL(#27;搜索经模板 FilterToolbar 节流落 URL);
+ * 选中角色由 role 参数驱动,参数清空即收起 Claims 面板。
  * Claim 草稿经 sessionStorage 暂存(#26):添加命中 MFA step-up 后回到同一角色自动恢复。
+ * 删除确认走模板 ConfirmAction,结果反馈统一经 notify。
  */
 export default function RolesPage() {
-  const { t } = useTranslation()
+  const { t } = useI18n()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const query = searchParams.get("q") ?? ""
@@ -63,7 +63,6 @@ export default function RolesPage() {
   const [claimsBusy, setClaimsBusy] = useState(false)
   const [claimsLoading, setClaimsLoading] = useState(false)
   const [claimsError, setClaimsError] = useState<string | null>(null)
-  const [claimPendingDelete, setClaimPendingDelete] = useState<RoleClaim | null>(null)
   const loadSeq = useRef(0)
   const claimsSeq = useRef(0)
   const pageSize = 20
@@ -93,6 +92,13 @@ export default function RolesPage() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // 筛选变化回第一页(FilterToolbar 只管自己的键,翻页参数归页面管)。
+  const pageRef = useRef(page)
+  pageRef.current = page
+  useEffect(() => {
+    if (pageRef.current !== 1) updateParams({ page: null }, { replace: true })
+  }, [query, updateParams])
 
   // 选中角色的 Claims 由 URL 驱动(#27):role 参数变化即加载,清空即收起。
   useEffect(() => {
@@ -131,19 +137,19 @@ export default function RolesPage() {
       scope: claimDraft.scope.trim(),
     }
     if (!request.claimType || !request.claimValue || !request.scope) {
-      setError(t("Claim 类型、值和 scope 均不能为空"))
+      notify.error(t("Claim 类型、值和 scope 均不能为空"))
       return
     }
     setClaimsBusy(true)
     saveDraft("roles.claim", { roleId, draft: claimDraft })
     try {
-      setError(null)
       const created = await apiSend<RoleClaim>("POST", claimsPath(roleId), request)
       clearDraft("roles.claim")
       setClaims((items) => [...items, created])
       setClaimDraft(EMPTY_CLAIM)
+      notify.success(t("Claim 已添加"))
     } catch (cause) {
-      setError(serverError(cause))
+      notify.failure(toUserMessage(cause))
     } finally {
       setClaimsBusy(false)
     }
@@ -151,16 +157,11 @@ export default function RolesPage() {
 
   async function removeClaim(claim: RoleClaim) {
     if (!roleId) return
-    setClaimsBusy(true)
     try {
-      setError(null)
       await apiSend("DELETE", `${claimsPath(roleId)}/${claim.id}`)
       setClaims((items) => items.filter((item) => item.id !== claim.id))
     } catch (cause) {
-      setError(serverError(cause))
-    } finally {
-      setClaimsBusy(false)
-      setClaimPendingDelete(null)
+      throw toUserMessage(cause)
     }
   }
 
@@ -168,21 +169,12 @@ export default function RolesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="grid gap-1.5">
-          <Label htmlFor="query">{t("搜索角色")}</Label>
-          <Input
-            id="query"
-            className="w-64"
-            value={query}
-            onChange={(event) => updateParams({ q: event.target.value, page: null }, { replace: true })}
-            placeholder={t("输入即搜索")}
-          />
-        </div>
-        {result && <span className="pb-2 text-sm text-muted-foreground">{t("共 {{total}} 个角色", { total: result.total })}</span>}
-      </div>
+      <FilterToolbar
+        searchPlaceholder={t("搜索角色")}
+        right={result && <span className="text-sm text-muted-foreground">{t("共 {} 个角色", { total: result.total })}</span>}
+      />
 
-      {error && <p className="text-destructive">{error}</p>}
+      {error && <p role="alert" className="text-destructive">{error}</p>}
 
       <Card>
         <CardHeader>
@@ -202,14 +194,14 @@ export default function RolesPage() {
               </Button>
             ))}
             {/* 加载与空态区分(#31)。 */}
-            {!result && !error && <p className="text-sm text-muted-foreground">{t("正在加载…")}</p>}
+            {!result && !error && <p role="status" className="text-sm text-muted-foreground">{t("正在加载…")}</p>}
             {result && result.items.length === 0 && <p className="text-sm text-muted-foreground">{t("没有匹配的角色")}</p>}
           </div>
         </CardContent>
       </Card>
 
       <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">第 {page} / {totalPages} 页</span>
+        <span className="text-muted-foreground">{t("第 {} / {} 页", { page, totalPages })}</span>
         <div className="space-x-2">
           <Button
             variant="outline"
@@ -233,14 +225,14 @@ export default function RolesPage() {
       {roleId && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">{t("自定义 Claims · {{name}}", { name: result?.items.find((role) => role.id === roleId)?.name ?? roleId })}</CardTitle>
+            <CardTitle className="text-base">{t("自定义 Claims · {name}", { name: result?.items.find((role) => role.id === roleId)?.name ?? roleId })}</CardTitle>
             <CardDescription>{t("仅允许 panda: 命名空间；添加和删除需要近期完成 WebAuthn。")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {claimsLoading ? (
-              <p className="text-sm text-muted-foreground">{t("正在加载 Claims…")}</p>
+              <p role="status" className="text-sm text-muted-foreground">{t("正在加载 Claims…")}</p>
             ) : claimsError ? (
-              <p className="text-destructive">{claimsError}</p>
+              <p role="alert" className="text-destructive">{claimsError}</p>
             ) : claims.length > 0 ? (
               <div className="overflow-x-auto rounded border">
                 <Table className="w-full text-left text-sm">
@@ -253,7 +245,20 @@ export default function RolesPage() {
                         <TableCell className="px-3 py-2 font-mono text-xs">{claim.claimType}</TableCell>
                         <TableCell className="px-3 py-2">{claim.claimValue}</TableCell>
                         <TableCell className="px-3 py-2 font-mono text-xs">{claim.scope}</TableCell>
-                        <TableCell className="px-3 py-2 text-right"><Button variant="outline" size="sm" disabled={claimsBusy} onClick={() => setClaimPendingDelete(claim)}>删除</Button></TableCell>
+                        <TableCell className="px-3 py-2 text-right">
+                          <ConfirmAction
+                            trigger={
+                              <Button variant="outline" size="sm">
+                                {t("删除")}
+                              </Button>
+                            }
+                            title={t("删除 Claim {type}？", { type: claim.claimType })}
+                            description={t("删除后即刻生效；添加和删除 Claim 都会记录管理审计。")}
+                            confirmLabel={t("删除")}
+                            successMessage={t("Claim 已删除")}
+                            onConfirm={() => removeClaim(claim)}
+                          />
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -271,22 +276,6 @@ export default function RolesPage() {
           </CardContent>
         </Card>
       )}
-
-      {/* 删除确认(#28):window.confirm 换 AlertDialog。 */}
-      <AlertDialog open={claimPendingDelete !== null} onOpenChange={(open) => !open && setClaimPendingDelete(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>{t("删除 Claim {{type}}？", { type: claimPendingDelete?.claimType ?? "" })}</AlertDialogTitle>
-            <AlertDialogDescription>{t("删除后即刻生效；添加和删除 Claim 都会记录管理审计。")}</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>{t("取消")}</AlertDialogCancel>
-            <AlertDialogAction onClick={() => claimPendingDelete && void removeClaim(claimPendingDelete)}>
-              {t("删除")}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }
