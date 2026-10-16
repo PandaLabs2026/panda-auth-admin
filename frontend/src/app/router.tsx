@@ -61,13 +61,7 @@ export function AppShell() {
       navItems={navItems}
       title={t("管理后台")}
       brand={
-        <>
-          <img src="/admin/pandaauth-admin-mark-64.png" alt="PandaAuth" className="size-8 rounded-lg object-contain" />
-          <span className="grid flex-1 text-left leading-tight">
-            <span className="font-semibold">PandaAuth</span>
-            <span className="text-xs text-muted-foreground">{t("管理后台")}</span>
-          </span>
-        </>
+        <img src="/admin/pandaauth-logo-horizontal.png" alt="PandaAuth by PandaLabs" className="h-9 w-auto max-w-full object-contain object-left" />
       }
       headerActions={<HeaderActions />}
       commandActions={commandActions}
