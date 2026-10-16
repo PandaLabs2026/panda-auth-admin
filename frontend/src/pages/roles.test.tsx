@@ -2,7 +2,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { MemoryRouter } from "react-router-dom"
+import { Providers } from "@/test/utils"
 
 import RolesPage from "./roles"
 
@@ -27,7 +27,7 @@ describe("RolesPage", () => {
     }))
     const user = userEvent.setup()
 
-    render(<MemoryRouter><RolesPage /></MemoryRouter>)
+    render(<Providers><RolesPage /></Providers>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
 
     expect(await screen.findByText("panda:department")).toBeInTheDocument()
@@ -48,7 +48,7 @@ describe("RolesPage", () => {
     vi.stubGlobal("fetch", fetchMock)
     const user = userEvent.setup()
 
-    render(<MemoryRouter><RolesPage /></MemoryRouter>)
+    render(<Providers><RolesPage /></Providers>)
     await user.click(await screen.findByRole("button", { name: "special" }))
 
     expect(await screen.findByText("panda:department")).toBeInTheDocument()
@@ -67,7 +67,7 @@ describe("RolesPage", () => {
     }))
     const user = userEvent.setup()
 
-    render(<MemoryRouter><RolesPage /></MemoryRouter>)
+    render(<Providers><RolesPage /></Providers>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
 
     expect(await screen.findByText("正在加载 Claims…")).toBeInTheDocument()
@@ -93,7 +93,7 @@ describe("RolesPage", () => {
     }))
     const user = userEvent.setup()
 
-    render(<MemoryRouter><RolesPage /></MemoryRouter>)
+    render(<Providers><RolesPage /></Providers>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
     await user.type(screen.getByLabelText("搜索角色"), "removed")
     await waitFor(() => expect(screen.queryByText("自定义 Claims · admin")).not.toBeInTheDocument())
@@ -114,7 +114,7 @@ describe("RolesPage", () => {
     }))
     const user = userEvent.setup()
 
-    render(<MemoryRouter><RolesPage /></MemoryRouter>)
+    render(<Providers><RolesPage /></Providers>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
 
     expect(await screen.findByText("Claims 加载失败")).toBeInTheDocument()
@@ -131,7 +131,7 @@ describe("RolesPage", () => {
     vi.stubGlobal("fetch", fetchMock)
     const user = userEvent.setup()
 
-    render(<MemoryRouter><RolesPage /></MemoryRouter>)
+    render(<Providers><RolesPage /></Providers>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
     await screen.findByText("暂无自定义 Claims。")
     await user.click(screen.getByRole("button", { name: "添加" }))
@@ -151,7 +151,7 @@ describe("RolesPage", () => {
     vi.stubGlobal("fetch", fetchMock)
     const user = userEvent.setup()
 
-    render(<MemoryRouter><RolesPage /></MemoryRouter>)
+    render(<Providers><RolesPage /></Providers>)
     await user.click(await screen.findByRole("button", { name: "admin" }))
     await user.click(await screen.findByRole("button", { name: "删除" }))
 

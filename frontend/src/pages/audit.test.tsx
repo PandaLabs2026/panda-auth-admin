@@ -1,9 +1,10 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter, useSearchParams } from "react-router-dom"
+import { useSearchParams } from "react-router"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import AuditPage from "./audit"
+import { Providers } from "@/test/utils"
 
 function json(body: unknown): Response {
   return new Response(JSON.stringify(body), { headers: { "content-type": "application/json" } })
@@ -26,9 +27,9 @@ describe("AuditPage URL filters and states", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     render(
-      <MemoryRouter initialEntries={["/audit?tab=logins&from=2026-10-01T09%3A30&to=2026-10-02T18%3A45&userName=alice&succeeded=true&page=3"]}>
+      <Providers initialEntries={["/audit?tab=logins&from=2026-10-01T09%3A30&to=2026-10-02T18%3A45&userName=alice&succeeded=true&page=3"]}>
         <AuditPage />
-      </MemoryRouter>,
+      </Providers>,
     )
 
     expect(screen.getByLabelText("起（本地时区）")).toHaveValue("2026-10-01T09:30")
@@ -48,10 +49,10 @@ describe("AuditPage URL filters and states", () => {
     const user = userEvent.setup()
 
     render(
-      <MemoryRouter initialEntries={["/audit?from=2026-10-01T09%3A30&to=2026-10-02T18%3A45&userName=alice&succeeded=false&page=4"]}>
+      <Providers initialEntries={["/audit?from=2026-10-01T09%3A30&to=2026-10-02T18%3A45&userName=alice&succeeded=false&page=4"]}>
         <AuditPage />
         <SearchParamsProbe />
-      </MemoryRouter>,
+      </Providers>,
     )
 
     await user.click(screen.getByRole("tab", { name: "管理日志" }))
@@ -70,7 +71,7 @@ describe("AuditPage URL filters and states", () => {
   it("keeps the table anchor during loading and empty states", async () => {
     let resolveAudit: ((response: Response) => void) | undefined
     vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { resolveAudit = resolve })))
-    const { container } = render(<MemoryRouter><AuditPage /></MemoryRouter>)
+    const { container } = render(<Providers><AuditPage /></Providers>)
 
     const tableContainer = container.querySelector('[data-slot="table-container"]')
     expect(tableContainer).toHaveClass("overflow-x-auto")

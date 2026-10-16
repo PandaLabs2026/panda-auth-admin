@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="默认头像">
+  <!-- 缺省头像(UI 件,非品牌资产):中性灰底人形剪影,avatarUrl 缺省时使用。 -->
+  <circle cx="48" cy="48" r="48" fill="#e5eae4"/>
+  <circle cx="48" cy="38" r="15" fill="#a9b5aa"/>
+  <path d="M20 82a28 28 0 0 1 56 0v14H20z" fill="#a9b5aa"/>
+</svg>

@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { MemoryRouter } from "react-router-dom"
+import { Providers } from "@/test/utils"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import UsersPage from "./users"
@@ -58,7 +58,7 @@ describe("UsersPage detail ordering", () => {
     const user = userEvent.setup()
 
     // 选中详情由 URL 参数驱动(#27),需要 Router 上下文。
-    render(<MemoryRouter><UsersPage /></MemoryRouter>)
+    render(<Providers><UsersPage /></Providers>)
     await user.click(await screen.findByText("alice"))
     await user.click(await screen.getByText("bob"))
 
@@ -89,7 +89,7 @@ describe("UsersPage revoke tokens", () => {
     vi.stubGlobal("fetch", fetchMock)
     const user = userEvent.setup()
 
-    render(<MemoryRouter><UsersPage /></MemoryRouter>)
+    render(<Providers><UsersPage /></Providers>)
     await user.click(await screen.findByText("alice"))
     await user.click(await screen.findByRole("button", { name: "下线全部会话" }))
 
@@ -114,7 +114,7 @@ describe("UsersPage sorting", () => {
     vi.stubGlobal("fetch", fetchMock)
     const user = userEvent.setup()
 
-    render(<MemoryRouter><UsersPage /></MemoryRouter>)
+    render(<Providers><UsersPage /></Providers>)
     await user.click(await screen.findByRole("button", { name: /用户名/ }))
     await screen.findByText("alice")
 
@@ -139,7 +139,7 @@ describe("UsersPage sessions panel", () => {
     }))
     const user = userEvent.setup()
 
-    render(<MemoryRouter><UsersPage /></MemoryRouter>)
+    render(<Providers><UsersPage /></Providers>)
     await user.click(await screen.findByText("alice"))
 
     // #30 后半:详情卡下的只读会话面板,独立加载。
@@ -158,7 +158,7 @@ describe("UsersPage long identifiers", () => {
       return Promise.reject(new Error(`unexpected request: ${path}`))
     }))
 
-    const { container } = render(<MemoryRouter><UsersPage /></MemoryRouter>)
+    const { container } = render(<Providers><UsersPage /></Providers>)
 
     expect(await screen.findByText(longId)).toBeInTheDocument()
     const tableContainer = container.querySelector('[data-slot="table-container"]')

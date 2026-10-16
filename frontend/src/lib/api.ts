@@ -5,15 +5,15 @@
  * 其余 403 是真正的权限拒绝，随一般错误路径展示，不再误导用户去 /account/mfa。
  */
 
-/** MFA 门禁标记响应头：BFF 代理在上游 403 响应体带 mfaRequired 标记时附加（见 AdminApiProxy）。 */
-import i18n from "@/i18n"
+import { currentLocale, serverMessagesEn } from "@/i18n/config"
 
 const MFA_REQUIRED_HEADER = "X-Panda-Mfa-Required"
 
 /**
  * 带服务端稳定错误码的 API 错误(ADR 2026-10-11-admin-error-codes):
- * code 存在时渲染层经 t(`server.${code}`, { defaultValue: message }) 走 i18n;
- * message 始终是服务端原文(zh),未登记站点/未知码直接显示 message。
+ * code 存在时渲染层经 serverError() 走 en 词典,其余(含 zh)显示服务端原文;
+ * 未登记站点/未知码直接显示 message。服务端文案不进 I18nProvider(模板约定:
+ * 那是后端契约,不是应用 UI 资产)。
  */
 export class ApiError extends Error {
   readonly code?: string
@@ -25,11 +25,12 @@ export class ApiError extends Error {
   }
 }
 
-/** 错误渲染:有码走 i18n(server.* 命名空间,en 资源),无码/未知码显示原文。 */
+/** 错误渲染:en 下有码走 server 词典,无码/未知码/zh 显示服务端原文。 */
 export function serverError(error: unknown): string {
   const message = error instanceof Error ? error.message : "加载失败"
   const code = error instanceof ApiError ? error.code : undefined
-  return code ? i18n.t(`server.${code}`, { defaultValue: message }) : message
+  if (!code || currentLocale() !== "en") return message
+  return serverMessagesEn[`server.${code}`] ?? message
 }
 
 async function fetchAntiforgeryToken(): Promise<string> {

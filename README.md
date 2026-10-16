@@ -10,11 +10,15 @@
 
 PandaAuth administration uses a .NET 10 BFF and React 19 frontend. Production path: `/admin`; backend binding: 127.0.0.1:9006. Management data is intended to flow through Server Admin APIs rather than direct database access.
 
+The frontend is based on [panda-webapp-template](https://github.com/PandaLabs2026/panda-webapp-template) **v0.5.2** (alignment batch 2026-10-16): canonical template files (`ui/`, `patterns/`, `lib/i18n|notify`, `hooks/`, `typeset.css`) are copied verbatim; app identity stays in the token layer (PandaAuth steel-blue theme) and the BFF contract layer (`lib/api.ts` antiforgery two-hop + MFA step-up + 401 full-page redirect). The session layer adapts the BFF in `lib/auth.ts` while the component layer keeps the template shapes (AppLayout/NavUser/CommandPalette/RequireAuth/ConfirmAction/FilterToolbar/notify). Semantic badges (success/warning) are an app-level component (the canonical Badge has no such variants). Server error-code EN dictionary lives in `src/i18n/en-server.json`; UI strings EN dictionary in `src/i18n/en.json` (natural keys — the Chinese string is the key).
+
 ## Current implementation and limitations
 
 The [backend](src/PandaAuth.Admin/Program.cs) runs as a first-party OIDC client: `GET /admin/challenge` is the authentication challenge endpoint (authorization code + PKCE), with cookie sessions and antiforgery tokens. The [login page](frontend/src/pages/login.tsx) at `/admin/login` navigates to the challenge endpoint — automatically when carrying a `returnUrl`; no credentials are entered on this site.
 
 Health path `/admin/healthz` and antiforgery endpoint `/admin/api/antiforgery` exist. User, client, role and audit management pages are implemented. Cookie/antiforgery configuration is not proof of completed security acceptance.
+
+The template NotificationBell (notification center) is not wired: the BFF has no notifications endpoint yet; pending a backend capability project.
 
 ## Prerequisites, build and run
 

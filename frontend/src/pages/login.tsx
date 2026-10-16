@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react"
-import { useSearchParams } from "react-router-dom"
-import { useTranslation } from "react-i18next"
+import { useLocation, useSearchParams } from "react-router"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { useI18n } from "@/lib/i18n"
 
 /**
  * 管理后台品牌登录页(由 BFF 的 SPA 回退承载,挑战端点在 /admin/challenge)。
@@ -14,7 +14,8 @@ import { Skeleton } from "@/components/ui/skeleton"
  * `/admin/callback/login/pandaauth`:具备 admin 角色则建立会话并落到 returnUrl 或 `/admin/`,
  * 否则 403(角色门禁在 BFF 回调处强制,见 Program.cs)。
  *
- * 带 returnUrl 到达(api 层 401 重登的最常见形态)时自动发起挑战,免一次点击、
+ * 带 returnUrl 到达(api 层 401 重登与 RequireAuth 守卫回跳的最常见形态;后者经
+ * location.state.from——两处来源归一到同一 returnUrl)时自动发起挑战,免一次点击、
  * 保持「会话过期 → 重登 → 回原页」的无缝体验;直接访问或带 error 到达(异常路径)时
  * 停在品牌页由用户显式点击,避免系统性故障下对 IDP 的自动重试。
  *
@@ -22,11 +23,13 @@ import { Skeleton } from "@/components/ui/skeleton"
  * fetch 不跟随跨站表单/重定向链,全页导航是唯一正确形态(me 仓同款)。
  */
 export default function LoginPage() {
-  const { t } = useTranslation()
+  const { t } = useI18n()
   const [searchParams] = useSearchParams()
+  const location = useLocation()
   // returnUrl 原样透传:消费点是 BFF 挑战端点的 LoginReturnUrl 白名单,
   // 前端不做二次校验(校验语义只有一处,服务端兜住全部入口)。
-  const returnUrl = searchParams.get("returnUrl") ?? ""
+  const stateFrom = (location.state as { from?: string } | null)?.from
+  const returnUrl = searchParams.get("returnUrl") ?? (stateFrom && stateFrom.startsWith("/") ? stateFrom : "")
   const hasError = searchParams.has("error")
   const [leaving, setLeaving] = useState(false)
 
