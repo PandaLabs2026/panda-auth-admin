@@ -38,8 +38,7 @@ describe("AppShell wiring", () => {
     renderShell()
 
     // 品牌:mark + 应用名双行(模板 AppLayout 结构,应用身份)。
-    expect(screen.getByText("PandaAuth")).toBeInTheDocument()
-    expect(screen.getByAltText("PandaAuth")).toHaveAttribute("src", "/admin/pandaauth-admin-mark-64.png")
+    expect(screen.getByRole("img", { name: "PandaAuth by PandaLabs" })).toHaveAttribute("src", "/admin/pandaauth-logo-horizontal.png")
     // 导航来自 lib/nav.ts 单源(t() 过语言层)。
     expect(screen.getByText("用户管理")).toBeInTheDocument()
     expect(screen.getByText("审计查询")).toBeInTheDocument()
