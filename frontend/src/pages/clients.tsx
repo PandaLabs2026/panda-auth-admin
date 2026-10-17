@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { useSearchParams } from "react-router"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import ConfirmAction from "@/components/patterns/ConfirmAction"
 import { Button } from "@/components/ui/button"
@@ -33,6 +34,7 @@ function toUserMessage(cause: unknown): Error {
  */
 export default function ClientsPage() {
   const { t } = useI18n()
+  const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
   const clientId = searchParams.get("client")
 
@@ -53,67 +55,52 @@ export default function ClientsPage() {
     [setSearchParams],
   )
 
-  const [list, setList] = useState<PageResult<ClientSummary> | null>(null)
-  const [listError, setListError] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [selected, setSelected] = useState<ClientDetail | null>(null)
-  const [options, setOptions] = useState<ClientOptions | null>(null)
-  const [optionsError, setOptionsError] = useState<string | null>(null)
   const [redirectUris, setRedirectUris] = useState("")
   const [postLogoutUris, setPostLogoutUris] = useState("")
   const [permissions, setPermissions] = useState<Set<string>>(new Set())
   const [secretNotice, setSecretNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
-  // 选中详情的乱序守卫（与 users 页 detailSeq 同款）：连续点击两行时，
-  // 慢的旧详情可能后到并覆盖新选中的详情。
-  const selectSeq = useRef(0)
 
-  useEffect(() => {
-    apiGet<PageResult<ClientSummary>>("/admin/api/clients")
-      .then((data) => {
-        setList(data)
-        setListError(null)
-      })
-      .catch((cause) => setListError(serverError(cause)))
-    apiGet<ClientOptions>("/admin/api/clients/options")
-      .then((data) => {
-        setOptions(data)
-        setOptionsError(null)
-      })
-      .catch((cause) => setOptionsError(serverError(cause)))
-  }, [])
+  // 读侧经 useQuery(P3 迁移):目录/选项常驻,详情键=[clientId](键语义取代乱序守卫——
+  // 慢的旧详情只写进旧键缓存,不会覆盖新选中)。
+  const listQuery = useQuery({
+    queryKey: ["clients"],
+    queryFn: () => apiGet<PageResult<ClientSummary>>("/admin/api/clients"),
+    retry: false,
+  })
+  const optionsQuery = useQuery({
+    queryKey: ["clients-options"],
+    queryFn: () => apiGet<ClientOptions>("/admin/api/clients/options"),
+    retry: false,
+  })
+  const detailQuery = useQuery({
+    queryKey: ["clients-detail", clientId],
+    queryFn: () => apiGet<ClientDetail>(`/admin/api/clients/${encodeURIComponent(clientId!)}`),
+    enabled: clientId !== null,
+    retry: false,
+  })
+  const list = listQuery.data ?? null
+  const listError = listQuery.error ? serverError(listQuery.error) : null
+  const options = optionsQuery.data ?? null
+  const optionsError = optionsQuery.error ? serverError(optionsQuery.error) : null
+  const selected = (clientId ? detailQuery.data : undefined) ?? null
+  const detailError = detailQuery.error ? serverError(detailQuery.error) : null
+  const shownError = detailError
 
-  // 选中客户端由 URL 驱动(#27):刷新/直链可恢复;参数清空即收起详情。
+  // 详情落地(含保存后失效重取)同步表单;MFA step-up 草稿恢复(#26)带 clientId 匹配(consume 即弃)。
   useEffect(() => {
-    if (!clientId) {
-      selectSeq.current++
-      setSelected(null)
+    if (!detailQuery.data) return
+    const saved = consumeDraft<{ clientId: string; draft: ClientDraft }>("clients.form")
+    if (saved && saved.clientId === detailQuery.data.clientId) {
+      setRedirectUris(saved.draft.redirectUris)
+      setPostLogoutUris(saved.draft.postLogoutUris)
+      setPermissions(new Set(saved.draft.permissions))
       return
     }
-    const seq = ++selectSeq.current
-    void (async () => {
-      try {
-        setError(null)
-        const detail = await apiGet<ClientDetail>(`/admin/api/clients/${encodeURIComponent(clientId)}`)
-        if (seq !== selectSeq.current) return
-        setSelected(detail)
-        // MFA step-up 草稿恢复(#26):草稿带 clientId,只有回到同一客户端才恢复(consume 即弃)。
-        const saved = consumeDraft<{ clientId: string; draft: ClientDraft }>("clients.form")
-        if (saved && saved.clientId === detail.clientId) {
-          setRedirectUris(saved.draft.redirectUris)
-          setPostLogoutUris(saved.draft.postLogoutUris)
-          setPermissions(new Set(saved.draft.permissions))
-          return
-        }
-        setRedirectUris(detail.redirectUris.join("\n"))
-        setPostLogoutUris(detail.postLogoutRedirectUris.join("\n"))
-        setPermissions(new Set(detail.permissions))
-      } catch (cause) {
-        if (seq !== selectSeq.current) return
-        setError(serverError(cause))
-      }
-    })()
-  }, [clientId])
+    setRedirectUris(detailQuery.data.redirectUris.join("\n"))
+    setPostLogoutUris(detailQuery.data.postLogoutRedirectUris.join("\n"))
+    setPermissions(new Set(detailQuery.data.permissions))
+  }, [detailQuery.data])
 
   function splitUris(text: string): string[] {
     return text
@@ -132,7 +119,7 @@ export default function ClientsPage() {
         postLogoutRedirectUris: splitUris(postLogoutUris),
       })
       clearDraft("clients.form")
-      setSelected(updated)
+      queryClient.setQueryData(["clients-detail", clientId], updated)
       notify.success(t("白名单已更新。"))
     } catch (cause) {
       notify.failure(toUserMessage(cause))
@@ -150,7 +137,7 @@ export default function ClientsPage() {
         permissions: [...permissions],
       })
       clearDraft("clients.form")
-      setSelected(updated)
+      queryClient.setQueryData(["clients-detail", clientId], updated)
       notify.success(t("权限已更新。"))
     } catch (cause) {
       notify.failure(toUserMessage(cause))
@@ -175,7 +162,7 @@ export default function ClientsPage() {
   return (
     <div className="space-y-6">
       {listError && <p role="alert" className="text-destructive">{listError}</p>}
-      {error && <p role="alert" className="text-destructive">{error}</p>}
+      {shownError && <p role="alert" className="text-destructive">{shownError}</p>}
 
       {secretNotice && (
         <div role="status" className="flex flex-wrap items-center gap-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">

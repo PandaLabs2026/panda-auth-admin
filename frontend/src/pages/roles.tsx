@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import ConfirmAction from "@/components/patterns/ConfirmAction"
 import FilterToolbar from "@/components/patterns/FilterToolbar"
@@ -33,6 +34,9 @@ function toUserMessage(cause: unknown): Error {
  */
 export default function RolesPage() {
   const { t } = useI18n()
+  const queryClient = useQueryClient()
+  const [claimDraft, setClaimDraft] = useState<ClaimRequest>(EMPTY_CLAIM)
+  const [claimsBusy, setClaimsBusy] = useState(false)
   const [searchParams, setSearchParams] = useSearchParams()
 
   const query = searchParams.get("q") ?? ""
@@ -56,42 +60,45 @@ export default function RolesPage() {
     [setSearchParams],
   )
 
-  const [result, setResult] = useState<PageResult<RoleSummary> | null>(null)
-  const [claims, setClaims] = useState<RoleClaim[]>([])
-  const [claimDraft, setClaimDraft] = useState<ClaimRequest>(EMPTY_CLAIM)
-  const [error, setError] = useState<string | null>(null)
-  const [claimsBusy, setClaimsBusy] = useState(false)
-  const [claimsLoading, setClaimsLoading] = useState(false)
-  const [claimsError, setClaimsError] = useState<string | null>(null)
-  const loadSeq = useRef(0)
-  const claimsSeq = useRef(0)
   const pageSize = 20
 
-  const load = useCallback(async () => {
-    const seq = ++loadSeq.current
-    try {
-      setError(null)
+  // 读侧经 useQuery(P3 迁移):目录键=[page,q],Claims 键=[roleId];键语义取代乱序守卫。
+  const listQuery = useQuery({
+    queryKey: ["roles", page, query],
+    queryFn: () => {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
       if (query.trim()) params.set("query", query.trim())
-      const data = await apiGet<PageResult<RoleSummary>>(`/admin/api/roles?${params}`)
-      if (seq !== loadSeq.current) return
-      setResult(data)
-      // 选中的角色从目录里消失(搜索过滤/数据变更):清参数收起面板,旧 Claims 响应作废。
-      if (roleId && !data.items.some((role) => role.id === roleId)) {
-        claimsSeq.current++
-        updateParams({ role: null }, { replace: true })
-        setClaims([])
-        setClaimsLoading(false)
-        setClaimsError(null)
-      }
-    } catch (cause) {
-      if (seq === loadSeq.current) setError(serverError(cause))
-    }
-  }, [page, query, roleId, updateParams])
+      return apiGet<PageResult<RoleSummary>>(`/admin/api/roles?${params}`)
+    },
+    retry: false,
+  })
+  const result = listQuery.data ?? null
+  const error = listQuery.error ? serverError(listQuery.error) : null
 
+  // 选中角色的 Claims 由 URL 驱动(#27):role 参数变化即取,清空即无查询。
+  const claimsQuery = useQuery({
+    queryKey: ["roles-claims", roleId],
+    queryFn: () => apiGet<RoleClaim[]>(claimsPath(roleId!)),
+    enabled: roleId !== null,
+    retry: false,
+  })
+  const claims = claimsQuery.data ?? []
+  const claimsLoading = roleId !== null && claimsQuery.isPending
+  const claimsError = claimsQuery.error ? serverError(claimsQuery.error) : null
+
+  // MFA step-up 草稿恢复(#26):Claims 首次落到某角色时消费(consume 即弃,带 roleId 匹配)。
   useEffect(() => {
-    void load()
-  }, [load])
+    if (!roleId || !claimsQuery.data) return
+    const saved = consumeDraft<{ roleId: string; draft: ClaimRequest }>("roles.claim")
+    if (saved && saved.roleId === roleId) setClaimDraft(saved.draft)
+  }, [roleId, claimsQuery.data])
+
+  // 选中的角色从目录里消失(搜索过滤/数据变更):清参数收起面板,旧 Claims 缓存随之作废。
+  useEffect(() => {
+    if (roleId && result && !result.items.some((role) => role.id === roleId)) {
+      updateParams({ role: null }, { replace: true })
+    }
+  }, [roleId, result, updateParams])
 
   // 筛选变化回第一页(FilterToolbar 只管自己的键,翻页参数归页面管)。
   const pageRef = useRef(page)
@@ -99,35 +106,6 @@ export default function RolesPage() {
   useEffect(() => {
     if (pageRef.current !== 1) updateParams({ page: null }, { replace: true })
   }, [query, updateParams])
-
-  // 选中角色的 Claims 由 URL 驱动(#27):role 参数变化即加载,清空即收起。
-  useEffect(() => {
-    if (!roleId) {
-      claimsSeq.current++
-      setClaims([])
-      setClaimsLoading(false)
-      setClaimsError(null)
-      return
-    }
-    const seq = ++claimsSeq.current
-    setClaims([])
-    setClaimsLoading(true)
-    setClaimsError(null)
-    void (async () => {
-      try {
-        const data = await apiGet<RoleClaim[]>(claimsPath(roleId))
-        if (seq !== claimsSeq.current) return
-        setClaims(data)
-        // MFA step-up 草稿恢复(#26):草稿带 roleId,只有回到同一角色才恢复(consume 即弃)。
-        const saved = consumeDraft<{ roleId: string; draft: ClaimRequest }>("roles.claim")
-        if (saved && saved.roleId === roleId) setClaimDraft(saved.draft)
-      } catch (cause) {
-        if (seq === claimsSeq.current) setClaimsError(serverError(cause))
-      } finally {
-        if (seq === claimsSeq.current) setClaimsLoading(false)
-      }
-    })()
-  }, [roleId])
 
   async function addClaim() {
     if (!roleId) return
@@ -143,10 +121,10 @@ export default function RolesPage() {
     setClaimsBusy(true)
     saveDraft("roles.claim", { roleId, draft: claimDraft })
     try {
-      const created = await apiSend<RoleClaim>("POST", claimsPath(roleId), request)
+      await apiSend<RoleClaim>("POST", claimsPath(roleId), request)
       clearDraft("roles.claim")
-      setClaims((items) => [...items, created])
       setClaimDraft(EMPTY_CLAIM)
+      await queryClient.invalidateQueries({ queryKey: ["roles-claims", roleId] })
       notify.success(t("Claim 已添加"))
     } catch (cause) {
       notify.failure(toUserMessage(cause))
@@ -159,7 +137,7 @@ export default function RolesPage() {
     if (!roleId) return
     try {
       await apiSend("DELETE", `${claimsPath(roleId)}/${claim.id}`)
-      setClaims((items) => items.filter((item) => item.id !== claim.id))
+      await queryClient.invalidateQueries({ queryKey: ["roles-claims", roleId] })
     } catch (cause) {
       throw toUserMessage(cause)
     }

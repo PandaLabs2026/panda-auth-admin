@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useCallback } from "react"
 import { useSearchParams } from "react-router"
+import { useQuery } from "@tanstack/react-query"
 
 import SemanticBadge from "@/components/semantic-badge"
 import { Button } from "@/components/ui/button"
@@ -50,39 +51,30 @@ export default function AuditPage() {
     [setSearchParams],
   )
 
-  const [logins, setLogins] = useState<PageResult<LoginLogEntry> | null>(null)
-  const [admin, setAdmin] = useState<PageResult<AdminAuditEntry> | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  // 过滤输入即触发:用序号丢弃乱序返回的旧响应,避免表格闪回旧过滤条件的结果。
-  const loadSeq = useRef(0)
+  // 读侧经 useQuery(P3 迁移):query 键=URL 状态全集,URL 变即重取;Query 的键语义
+  // 天然取代旧 loadSeq 乱序守卫(每次键变化都是新查询,慢的旧响应只写进旧键的缓存)。
   const pageSize = 20
-
-  const load = useCallback(async () => {
-    const seq = ++loadSeq.current
-    try {
-      setError(null)
+  const listQuery = useQuery({
+    queryKey: ["audit", tab, page, from, to, userName, succeeded, actor, action],
+    queryFn: async () => {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
       if (from) params.set("from", new Date(from).toISOString())
       if (to) params.set("to", new Date(to).toISOString())
       if (tab === "logins") {
         if (userName.trim()) params.set("userName", userName.trim())
         if (succeeded) params.set("succeeded", succeeded)
-        const data = await apiGet<PageResult<LoginLogEntry>>(`/admin/api/audit/logins?${params}`)
-        if (seq === loadSeq.current) setLogins(data)
-      } else {
-        if (actor.trim()) params.set("actor", actor.trim())
-        if (action.trim()) params.set("action", action.trim())
-        const data = await apiGet<PageResult<AdminAuditEntry>>(`/admin/api/audit/admin?${params}`)
-        if (seq === loadSeq.current) setAdmin(data)
+        return apiGet<PageResult<LoginLogEntry>>(`/admin/api/audit/logins?${params}`) as Promise<PageResult<LoginLogEntry> | PageResult<AdminAuditEntry>>
       }
-    } catch (cause) {
-      if (seq === loadSeq.current) setError(serverError(cause))
-    }
-  }, [tab, page, from, to, userName, succeeded, actor, action])
+      if (actor.trim()) params.set("actor", actor.trim())
+      if (action.trim()) params.set("action", action.trim())
+      return apiGet<PageResult<AdminAuditEntry>>(`/admin/api/audit/admin?${params}`) as Promise<PageResult<LoginLogEntry> | PageResult<AdminAuditEntry>>
+    },
+    retry: false,
+  })
 
-  useEffect(() => {
-    void load()
-  }, [load])
+  const logins = tab === "logins" ? (listQuery.data as PageResult<LoginLogEntry> | undefined) ?? null : null
+  const admin = tab === "admin" ? (listQuery.data as PageResult<AdminAuditEntry> | undefined) ?? null : null
+  const error = listQuery.error ? serverError(listQuery.error) : null
 
   const result = tab === "logins" ? logins : admin
   const totalPages = result ? Math.max(1, Math.ceil(result.total / pageSize)) : 1
