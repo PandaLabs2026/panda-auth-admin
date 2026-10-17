@@ -604,6 +604,17 @@ app.MapGet("/admin/api/audit/logins", (HttpContext ctx, AdminApiProxy proxy)
 app.MapGet("/admin/api/audit/admin", (HttpContext ctx, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.AuditAdmin + ctx.Request.QueryString.Value, HttpMethod.Get));
 
+// 通知中心（server#49：审计派生列表 + 每管理员已读游标）。列表与游标读侧免防伪；
+// 游标写入是变更类（POST），照例经 WithAntiforgeryAsync + 原始体透传。
+app.MapGet("/admin/api/notifications", (HttpContext ctx, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.Notifications + ctx.Request.QueryString.Value, HttpMethod.Get));
+
+app.MapGet("/admin/api/notifications/cursor", (AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.NotificationsCursor, HttpMethod.Get));
+
+app.MapPost("/admin/api/notifications/cursor", (HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.NotificationsCursor, HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
+
 // 防伪令牌发放：登录之前把令牌发给 SPA（要求认证会形成鸡生蛋）。
 app.MapGet("/admin/api/antiforgery", (HttpContext context) =>
 {

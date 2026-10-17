@@ -1,10 +1,11 @@
 import { KeyRoundIcon, LanguagesIcon, ExternalLinkIcon } from "lucide-react"
+import NotificationBell from "@/components/patterns/NotificationBell"
 import { Button } from "@/components/ui/button"
 import { useSession } from "@/lib/auth"
 import { useI18n } from "@/lib/i18n"
 
 /**
- * 顶栏右侧常驻件（AppLayout headerActions 插槽）：返回门户 / 修改密码 / 语言切换。
+ * 顶栏右侧常驻件（AppLayout headerActions 插槽）：通知铃铛 / 返回门户 / 修改密码 / 语言切换。
  * 修改密码与门户是 IDP/门户页面，保持整页跳转；语言切换为纯 SPA 状态。
  */
 export default function HeaderActions() {
@@ -12,6 +13,7 @@ export default function HeaderActions() {
   const { data: session } = useSession()
   return (
     <>
+      <NotificationBell />
       {session?.portalHomeUrl && (
         <Button asChild variant="ghost" size="sm" className="h-8 gap-1.5 px-2 text-xs text-muted-foreground">
           <a href={session.portalHomeUrl}>

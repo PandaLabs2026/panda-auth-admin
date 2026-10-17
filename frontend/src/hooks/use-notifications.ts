@@ -1,10 +1,20 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiGet, apiSend, AUDIT_ACTION } from '@/lib/api';
+import { useI18n } from '@/lib/i18n';
 
 /**
- * 通知中心（v0.5.0）：内存 store + 轮询拉取的最小正典。真实接法=把 fetch 换成
- * BFF 的 /api/notifications（Envelope 契约），已读回写同理；UI 侧（铃铛/面板/页面）
- * 不变。通知属应用层数据：身份类消息（密码改登提醒等）归 IDP，勿塞这里。
+ * 通知中心 store（真实实现，模板 v0.5.0 契约的消费仓替换——模板自文档注明的接法：
+ * 「把 fetch 换成 BFF 端点，UI 侧不变」）。数据源=server 通知中心（管理审计流派生，
+ * server#49）：GET /admin/api/notifications（Id 倒序）+ 每管理员已读游标
+ * GET/POST /admin/api/notifications/cursor。
+ *
+ * 已读语义=**水位线**（Id ≤ cursor 视为已读），因此 markAllRead=把游标推进到本页
+ * 最新一条；markRead 保持模板 API 形态但仅本地乐观标记（单条回写会越过后面的未读，
+ * 与水位语义冲突——面板 UI 也只提供「全部已读」）。
+ * 通知属应用层数据：身份类消息（密码修改提醒等）归 IDP，勿塞这里。
  */
+
 export interface AppNotification {
   id: string;
   title: string;
@@ -15,12 +25,26 @@ export interface AppNotification {
   read: boolean;
 }
 
-/** 演示数据源：真实应用替换为 useApiQuery('/api/notifications', { refetchInterval })。 */
-const seed: AppNotification[] = [
-  { id: 'n1', title: '系统维护通知', body: '本周六 02:00–03:00 例行维护，期间服务短暂不可用。', at: '2026-10-15T09:00:00Z', level: 'warning', read: false },
-  { id: 'n2', title: '备份完成', body: '每日数据库备份已完成并通过结构校验。', at: '2026-10-15T03:12:00Z', level: 'success', read: false },
-  { id: 'n3', title: '新成员加入', body: '一位新成员接受了邀请加入工作区。', at: '2026-10-14T11:30:00Z', level: 'info', read: true },
-];
+/** server 契约（share AdminNotificationEntry；camelCase）。 */
+type NotificationEntry = {
+  id: number
+  actorUserId: string
+  actorUserName: string | null
+  action: string
+  targetType: string | null
+  targetId: string | null
+  detail: string | null
+  ipAddress: string | null
+  createdAt: string
+}
+
+type PageResult<T> = { items: T[]; total: number; page: number; pageSize: number }
+
+/** 危险/不可逆类动作给警示档；创建/恢复类给成功档；其余 info。 */
+const WARNING_ACTIONS = new Set([
+  'user.freeze', 'user.deactivate', 'user.revoke_tokens', 'user.reset_2fa', 'client.rotate_secret',
+])
+const SUCCESS_ACTIONS = new Set(['user.create', 'user.unfreeze', 'user.unlock'])
 
 export interface NotificationsApi {
   items: AppNotification[];
@@ -31,30 +55,57 @@ export interface NotificationsApi {
 }
 
 export function useNotifications(): NotificationsApi {
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { t } = useI18n();
+  const qc = useQueryClient();
 
-  // 首拉 + 30s 轮询(演示:数据静态;真实换成 useApiQuery 的 refetchInterval)
-  const load = useCallback(() => {
-    setItems(seed.map((n) => ({ ...n })));
-    setLoading(false);
-  }, []);
+  const list = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => apiGet<PageResult<NotificationEntry>>('/admin/api/notifications?pageSize=50'),
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    retry: false,
+  })
+  const cursor = useQuery({
+    queryKey: ['notifications-cursor'],
+    queryFn: () => apiGet<{ lastAuditId: number }>('/admin/api/notifications/cursor'),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    retry: false,
+  })
 
-  useEffect(() => {
-    load();
-    const timer = setInterval(load, 30_000);
-    return () => clearInterval(timer);
-  }, [load]);
+  const cursorId = cursor.data?.lastAuditId ?? 0
+
+  const items = useMemo<AppNotification[]>(() => {
+    if (!list.data) return []
+    return list.data.items.map((entry) => ({
+      id: String(entry.id),
+      // 动作标题：zh 展示映射（lib/api AUDIT_ACTION 单源）经 t() 过 en 自然键；未知动作回退原文。
+      title: t(AUDIT_ACTION[entry.action] ?? entry.action),
+      // 主体=操作者与目标标识（标识符非文案，不进词典）。
+      body: `${entry.actorUserName ?? entry.actorUserId} · ${entry.targetType ?? ''}:${entry.targetId ?? ''}`,
+      at: entry.createdAt,
+      level: WARNING_ACTIONS.has(entry.action) ? 'warning' : SUCCESS_ACTIONS.has(entry.action) ? 'success' : 'info',
+      read: entry.id <= cursorId,
+    }))
+  }, [list.data, cursorId, t])
+
+  const unread = useMemo(() => items.filter((n) => !n.read).length, [items])
 
   const markRead = useCallback((id: string) => {
-    setItems((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-  }, []);
+    // 水位语义下无单条回写：Bell UI 仅提供「全部已读」,本方法保留模板 API 形态为 no-op。
+    void id
+  }, [])
 
   const markAllRead = useCallback(() => {
-    setItems((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, []);
+    const maxId = items.reduce((max, n) => Math.max(max, Number(n.id)), 0)
+    if (maxId <= cursorId) return
+    // 游标写入单调不回退（server 校验）；成功后失效读侧,未读数即时归零。
+    void apiSend<{ lastAuditId: number }>('POST', '/admin/api/notifications/cursor', { lastAuditId: maxId })
+      .then(() => qc.invalidateQueries({ queryKey: ['notifications-cursor'] }))
+      .catch(() => {
+        // 失败静默：30s 轮询兜底重拉;错误不弹 toast(通知是辅助面,不抢操作反馈的注意力)。
+      })
+  }, [items, cursorId, qc])
 
-  const unread = useMemo(() => items.filter((n) => !n.read).length, [items]);
-
-  return { items, unread, loading, markRead, markAllRead };
+  return { items, unread, loading: list.isPending || cursor.isPending, markRead, markAllRead }
 }

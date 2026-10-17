@@ -216,5 +216,9 @@
   "修改客户端权限": "Update client permissions",
   "轮换客户端密钥": "Rotate client secret",
   "吊销全部令牌": "Revoke all tokens",
-  "请求失败(HTTP {code})": "Request failed (HTTP {code})"
+  "请求失败(HTTP {code})": "Request failed (HTTP {code})",
+  "user.add_claim": "Claim added",
+  "user.remove_claim": "Claim removed",
+  "role.add_claim": "Role claim added",
+  "role.remove_claim": "Role claim removed"
 }

@@ -326,6 +326,20 @@ public class RouteGuardTests
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/admin/api/notifications?page=1&pageSize=20")]
+    [InlineData("/admin/api/notifications/cursor")]
+    public async Task Authenticated_NotificationProxyEndpoints_AreMappedBeforeProtectedFallback(string path)
+    {
+        using var factory = new GuardFactory(authenticated: true);
+        using var client = factory.CreateClient();
+
+        using var response = await client.GetAsync(path);
+
+        // 同上：已映射进代理（401）而非漏映射落兜底（404）。
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     [Fact]
     public async Task LoginChallenge_RateLimited_AfterTenPerMinute()
     {
