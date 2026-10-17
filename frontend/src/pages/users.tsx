@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 import ConfirmAction from "@/components/patterns/ConfirmAction"
 import FilterToolbar from "@/components/patterns/FilterToolbar"
@@ -100,57 +101,96 @@ export default function UsersPage() {
     [setSearchParams],
   )
 
-  const [result, setResult] = useState<PageResult<UserSummary> | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [detail, setDetail] = useState<UserDetail | null>(null)
   const [newPassword, setNewPassword] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<CreateDraft>(EMPTY_CREATE)
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState({ email: "", nickname: "", region: "" })
-  const [claims, setClaims] = useState<UserClaim[]>([])
   const [claimDraft, setClaimDraft] = useState<ClaimRequest>({ claimType: "panda:", claimValue: "", scope: "api" })
   const [claimsBusy, setClaimsBusy] = useState(false)
-  const [sessions, setSessions] = useState<AdminUserSession[] | null>(null)
-  const [sessionsError, setSessionsError] = useState<string | null>(null)
   const [deactivateTarget, setDeactivateTarget] = useState<UserDetail | null>(null)
   const [deactivateInput, setDeactivateInput] = useState("")
   const [copied, setCopied] = useState(false)
-  // 搜索/翻页是输入即触发：用序号丢弃乱序返回的旧响应，避免列表闪回旧查询的结果。
-  const loadSeq = useRef(0)
   const pageSize = 20
 
   const me = useSession().data
+  const queryClient = useQueryClient()
 
-  // 列表加载。搜索节流由 FilterToolbar 承担(URL 已是 300ms 节流后的值),这里直接消费。
-  const load = useCallback(async () => {
-    const seq = ++loadSeq.current
-    try {
-      setError(null)
+  // 读侧经 useQuery(P3 迁移)。列表键=URL 状态全集(URL 变即重取);搜索节流由
+  // FilterToolbar 承担(URL 已是 300ms 节流后的值)。键语义取代旧 loadSeq/detailSeq
+  // 乱序守卫——慢的旧响应只写进旧键的缓存,不会覆盖新查询的结果。
+  const listQuery = useQuery({
+    queryKey: ["users", page, query, status, sort, dir],
+    queryFn: () => {
       const params = new URLSearchParams({ page: String(page), pageSize: String(pageSize) })
       if (query.trim()) params.set("query", query.trim())
       if (status) params.set("status", status)
       // 服务端排序(#31):键来自表头按钮白名单,直接进参数。
       if (sort) params.set("orderBy", sort)
       if (sort) params.set("order", dir)
-      const data = await apiGet<PageResult<UserSummary>>(`/admin/api/users?${params}`)
-      if (seq === loadSeq.current) setResult(data)
-    } catch (cause) {
-      if (seq === loadSeq.current) setError(serverError(cause))
-    }
-  }, [page, query, status, sort, dir])
+      return apiGet<PageResult<UserSummary>>(`/admin/api/users?${params}`)
+    },
+    retry: false,
+  })
+  const result = listQuery.data ?? null
+  const error = listQuery.error ? serverError(listQuery.error) : null
 
-  // 会话面板独立加载:失败不影响详情主体(与详情/claims 的 Promise.all 分离)。
-  const loadSessions = useCallback(async (id: string) => {
-    try {
-      setSessionsError(null)
-      const data = await apiGet<AdminUserSession[]>(`/admin/api/users/${id}/sessions`)
-      setSessions(data)
-    } catch (cause) {
-      setSessionsError(serverError(cause))
+  // 详情+Claims 一个查询(同源同失效);选中由 URL 驱动(#27),清参数即收起。
+  const detailQuery = useQuery({
+    queryKey: ["users-detail", detailUserId],
+    queryFn: async () => {
+      const [user, userClaims] = await Promise.all([
+        apiGet<UserDetail>(`/admin/api/users/${detailUserId}`),
+        apiGet<UserClaim[]>(`/admin/api/users/${detailUserId}/claims`),
+      ])
+      return { user, claims: userClaims }
+    },
+    enabled: detailUserId !== null,
+    retry: false,
+  })
+  const detail = (detailUserId ? detailQuery.data?.user : undefined) ?? null
+  const claims = (detailUserId ? detailQuery.data?.claims : undefined) ?? []
+  const detailError = detailQuery.error ? serverError(detailQuery.error) : null
+  const shownError = error ?? detailError
+
+  // 在线会话面板(#30 后半):独立查询,失败不影响详情主体。
+  const sessionsQuery = useQuery({
+    queryKey: ["users-sessions", detailUserId],
+    queryFn: () => apiGet<AdminUserSession[]>(`/admin/api/users/${detailUserId}/sessions`),
+    enabled: detailUserId !== null,
+    retry: false,
+  })
+  const sessions = (detailUserId ? sessionsQuery.data : undefined) ?? null
+  const sessionsError = sessionsQuery.error ? serverError(sessionsQuery.error) : null
+
+  // 详情落地(含变更后失效重取)时的伴随动作:MFA step-up 草稿恢复(#26,带 userId
+  // 匹配,consume 即弃)——草稿只在详情数据首次/更新落地时消费一次。
+  useEffect(() => {
+    if (!detailQuery.data) return
+    setNewPassword(null)
+    setEditingProfile(false)
+    const user = detailQuery.data.user
+    const savedClaim = consumeDraft<{ userId: string; draft: ClaimRequest }>("users.claim")
+    if (savedClaim && savedClaim.userId === user.id) setClaimDraft(savedClaim.draft)
+    const savedProfile = consumeDraft<{ userId: string; draft: { email: string; nickname: string; region: string } }>("users.profile")
+    if (savedProfile && savedProfile.userId === user.id) {
+      setProfileDraft(savedProfile.draft)
+      setEditingProfile(true)
     }
-  }, [])
+  }, [detailQuery.data])
+
+  /** 变更后失效读侧:列表前缀失效(全页重取),详情与会话按键失效(打开时)。 */
+  const refreshAfterMutation = useCallback(
+    async (userId?: string) => {
+      await queryClient.invalidateQueries({ queryKey: ["users"] })
+      if (userId) {
+        await queryClient.invalidateQueries({ queryKey: ["users-detail", userId] })
+        await queryClient.invalidateQueries({ queryKey: ["users-sessions", userId] })
+      }
+    },
+    [queryClient],
+  )
 
   // 排序表头(#31):同列切换方向,异列回 asc。
   const toggleSort = useCallback(
@@ -161,60 +201,12 @@ export default function UsersPage() {
     [sort, dir, updateParams],
   )
 
-  useEffect(() => {
-    void load()
-  }, [load])
-
   // 筛选变化回第一页(FilterToolbar 只管自己的键,翻页参数归页面管)。
   const pageRef = useRef(page)
   pageRef.current = page
   useEffect(() => {
     if (pageRef.current !== 1) updateParams({ page: null }, { replace: true })
   }, [query, status, updateParams])
-
-  // 详情与列表同款乱序守卫：连续点击两行时，慢的旧详情可能后到并覆盖新选中的详情。
-  const detailSeq = useRef(0)
-
-  const openDetail = useCallback(async (id: string) => {
-    const seq = ++detailSeq.current
-    try {
-      setNewPassword(null)
-      setEditingProfile(false)
-      const [user, userClaims] = await Promise.all([
-        apiGet<UserDetail>(`/admin/api/users/${id}`),
-        apiGet<UserClaim[]>(`/admin/api/users/${id}/claims`),
-      ])
-      if (seq !== detailSeq.current) return
-      setDetail(user)
-      setClaims(userClaims)
-      // 在线会话面板(#30 后半):独立加载,失败不影响详情主体。
-      setSessions(null)
-      void loadSessions(user.id)
-      // MFA step-up 草稿恢复(#26):草稿带 userId,只有回到同一用户的详情才恢复;
-      // consume 即弃,不匹配的旧草稿顺带清场。
-      const savedClaim = consumeDraft<{ userId: string; draft: ClaimRequest }>("users.claim")
-      if (savedClaim && savedClaim.userId === user.id) setClaimDraft(savedClaim.draft)
-      const savedProfile = consumeDraft<{ userId: string; draft: { email: string; nickname: string; region: string } }>("users.profile")
-      if (savedProfile && savedProfile.userId === user.id) {
-        setProfileDraft(savedProfile.draft)
-        setEditingProfile(true)
-      }
-    } catch (cause) {
-      if (seq === detailSeq.current) setError(serverError(cause))
-    }
-  }, [loadSessions])
-
-  // 选中详情由 URL 驱动(#27):刷新/直链可恢复;参数清空即关闭详情。
-  useEffect(() => {
-    if (detailUserId) {
-      void openDetail(detailUserId)
-    } else {
-      setDetail(null)
-      setClaims([])
-      setSessions(null)
-      setEditingProfile(false)
-    }
-  }, [detailUserId, openDetail])
 
   // 建号表单草稿(#26):MFA step-up 返回后恢复(建号不绑定具体用户,挂载时消费即可)。
   useEffect(() => {
@@ -239,10 +231,10 @@ export default function UsersPage() {
     setClaimsBusy(true)
     saveDraft("users.claim", { userId: detail.id, draft: claimDraft })
     try {
-      const created = await apiSend<UserClaim>("POST", `/admin/api/users/${detail.id}/claims`, request)
+      await apiSend<UserClaim>("POST", `/admin/api/users/${detail.id}/claims`, request)
       clearDraft("users.claim")
-      setClaims((items) => [...items, created])
       setClaimDraft({ claimType: "panda:", claimValue: "", scope: "api" })
+      await refreshAfterMutation(detail.id)
       notify.success(t("Claim 已添加"))
     } catch (cause) {
       notify.failure(toUserMessage(cause))
@@ -271,7 +263,7 @@ export default function UsersPage() {
       setCreating(false)
       setDraft(EMPTY_CREATE)
       if (response.password) setNewPassword(response.password)
-      await load()
+      await refreshAfterMutation()
       notify.success(t("账号已创建"))
     } catch (cause) {
       notify.failure(toUserMessage(cause))
@@ -285,14 +277,14 @@ export default function UsersPage() {
     setBusy(true)
     saveDraft("users.profile", { userId: detail.id, draft: profileDraft })
     try {
-      setDetail(await apiSend<UserDetail>("PUT", `/admin/api/users/${detail.id}/profile`, {
+      await apiSend<UserDetail>("PUT", `/admin/api/users/${detail.id}/profile`, {
         email: profileDraft.email.trim() || null,
         nickname: profileDraft.nickname.trim() || null,
         region: profileDraft.region.trim() || null,
-      }))
+      })
       clearDraft("users.profile")
       setEditingProfile(false)
-      await load()
+      await refreshAfterMutation(detail.id)
       notify.success(t("资料已保存"))
     } catch (cause) {
       notify.failure(toUserMessage(cause))
@@ -307,8 +299,7 @@ export default function UsersPage() {
       await apiSend("POST", `/admin/api/users/${user.id}/deactivate`, { confirmUserName: user.userName })
       setDeactivateTarget(null)
       setDeactivateInput("")
-      await load()
-      await openDetail(user.id)
+      await refreshAfterMutation(user.id)
       notify.success(t("账号已注销"))
     } catch (cause) {
       notify.failure(toUserMessage(cause))
@@ -334,8 +325,7 @@ export default function UsersPage() {
   async function confirmFreeze(user: UserSummary) {
     try {
       await apiSend("POST", `/admin/api/users/${user.id}/status`, { status: user.status === 1 ? 0 : 1 })
-      await load()
-      if (detail?.id === user.id) await openDetail(user.id)
+      await refreshAfterMutation(detail?.id === user.id ? user.id : undefined)
     } catch (cause) {
       throw toUserMessage(cause)
     }
@@ -354,8 +344,8 @@ export default function UsersPage() {
     const granting = !user.roles.includes(ADMIN_ROLE)
     try {
       const roles = granting ? [...user.roles, ADMIN_ROLE] : user.roles.filter((role) => role !== ADMIN_ROLE)
-      setDetail(await apiSend<UserDetail>("PUT", `/admin/api/users/${user.id}/roles`, { roles }))
-      await load()
+      await apiSend<UserDetail>("PUT", `/admin/api/users/${user.id}/roles`, { roles })
+      await refreshAfterMutation(user.id)
     } catch (cause) {
       throw toUserMessage(cause)
     }
@@ -363,8 +353,8 @@ export default function UsersPage() {
 
   async function confirmUnlock(user: UserDetail) {
     try {
-      setDetail(await apiSend<UserDetail>("POST", `/admin/api/users/${user.id}/unlock`, {}))
-      await load()
+      await apiSend<UserDetail>("POST", `/admin/api/users/${user.id}/unlock`, {})
+      await refreshAfterMutation(user.id)
     } catch (cause) {
       throw toUserMessage(cause)
     }
@@ -372,8 +362,8 @@ export default function UsersPage() {
 
   async function confirmResetTwoFactor(user: UserDetail) {
     try {
-      setDetail(await apiSend<UserDetail>("POST", `/admin/api/users/${user.id}/reset-2fa`, {}))
-      await load()
+      await apiSend<UserDetail>("POST", `/admin/api/users/${user.id}/reset-2fa`, {})
+      await refreshAfterMutation(user.id)
     } catch (cause) {
       throw toUserMessage(cause)
     }
@@ -382,8 +372,8 @@ export default function UsersPage() {
   // 独立踢下线(#30):仅吊销令牌,账号状态/凭据不动;server 侧另有 MFA 门禁与自操作封禁。
   async function confirmRevokeTokens(user: UserDetail) {
     try {
-      setDetail(await apiSend<UserDetail>("POST", `/admin/api/users/${user.id}/revoke-tokens`, {}))
-      await load()
+      await apiSend<UserDetail>("POST", `/admin/api/users/${user.id}/revoke-tokens`, {})
+      await refreshAfterMutation(user.id)
     } catch (cause) {
       throw toUserMessage(cause)
     }
@@ -393,7 +383,7 @@ export default function UsersPage() {
     if (!detail) return
     try {
       await apiSend("DELETE", `/admin/api/users/${detail.id}/claims/${claim.id}`)
-      setClaims((items) => items.filter((item) => item.id !== claim.id))
+      await refreshAfterMutation(detail.id)
     } catch (cause) {
       throw toUserMessage(cause)
     }
@@ -429,7 +419,7 @@ export default function UsersPage() {
         }
       />
 
-      {error && <p role="alert" className="text-destructive">{error}</p>}
+      {shownError && <p role="alert" className="text-destructive">{shownError}</p>}
 
       {creating && (
         <Card>
@@ -827,7 +817,7 @@ export default function UsersPage() {
               variant="outline"
               size="sm"
               disabled={sessions === null && sessionsError === null}
-              onClick={() => void loadSessions(detail.id)}
+              onClick={() => { void queryClient.invalidateQueries({ queryKey: ["users-sessions", detail.id] }) }}
             >
               {t("刷新")}
             </Button>

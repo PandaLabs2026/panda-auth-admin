@@ -49,6 +49,7 @@ export default function AppLayout({
 }: {
   navItems: NavItem[];
   title?: string;
+  /** 品牌槽:整体替换侧栏头部品牌块(默认图标+「PandaLabs/Web 模板」双行文字),应用传完整品牌块。 */
   brand?: React.ReactNode;
   /** 内容区附加类：默认全宽，需要阅读宽度时传 `max-w-4xl mx-auto` 之类收窄。 */
   contentClassName?: string;
@@ -67,13 +68,17 @@ export default function AppLayout({
           <SidebarMenu>
             <SidebarMenuItem>
               <SidebarMenuButton size="lg">
+                {/* brand 整体替换品牌块(图标+双行文字),不留模板硬编码文字——
+                    否则应用自注品牌后侧栏出现两组文字(auth-me/fleet-hub 踩坑)。 */}
                 {brand ?? (
-                  <img src="/brand/pandalabs-mark-96.png" alt="PandaLabs" className="size-8 rounded-lg object-contain" />
+                  <>
+                    <img src="/brand/pandalabs-mark-96.png" alt="PandaLabs" className="size-8 rounded-lg object-contain" />
+                    <span className="grid flex-1 text-left leading-tight">
+                      <span className="font-semibold">PandaLabs</span>
+                      <span className="text-xs text-muted-foreground">Web 模板</span>
+                    </span>
+                  </>
                 )}
-                <span className="grid flex-1 text-left leading-tight">
-                  <span className="font-semibold">PandaLabs</span>
-                  <span className="text-xs text-muted-foreground">Web 模板</span>
-                </span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

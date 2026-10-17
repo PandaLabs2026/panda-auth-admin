@@ -220,5 +220,6 @@
   "user.add_claim": "Claim added",
   "user.remove_claim": "Claim removed",
   "role.add_claim": "Role claim added",
-  "role.remove_claim": "Role claim removed"
+  "role.remove_claim": "Role claim removed",
+  "密钥已轮换": "Secret rotated"
 }
