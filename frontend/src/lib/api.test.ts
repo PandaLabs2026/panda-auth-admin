@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
-import { apiGet, apiSend, ApiError } from "./api"
+import { apiGet, apiSend, ApiError, buildStepUpUrl } from "./api"
 
 function json(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -29,6 +29,23 @@ describe("apiGet", () => {
     ))
 
     await expect(apiGet("/admin/api/users?page=1")).rejects.toThrow("HTTP 403")
+  })
+})
+
+describe("buildStepUpUrl", () => {
+  it("routes step-up through a fresh BFF challenge before returning to the original page", () => {
+    const url = new URL(
+      buildStepUpUrl("/admin/users", "?page=2&user=u-1%2Fwith%2Fslash"),
+      "https://admin.example",
+    )
+
+    expect(url.pathname).toBe("/account/mfa")
+    const reauth = url.searchParams.get("returnUrl")
+    expect(reauth).not.toBeNull()
+
+    const challenge = new URL(reauth!, "https://admin.example")
+    expect(challenge.pathname).toBe("/admin/challenge")
+    expect(challenge.searchParams.get("returnUrl")).toBe("/admin/users?page=2&user=u-1%2Fwith%2Fslash")
   })
 })
 
