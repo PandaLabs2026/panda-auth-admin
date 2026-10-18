@@ -12,8 +12,8 @@ public class TenantHostContextTests
     [Fact]
     public void TenantHost_WithMatchingClaims_IsAccepted()
     {
-        var context = Request("t0042.auth.pandalabs.cn");
-        var principal = Principal("t0042", "t0042.auth.pandalabs.cn");
+        var context = Request("t0042-auth.s001.pandalabs.cn");
+        var principal = Principal("t0042", "t0042-auth.s001.pandalabs.cn");
 
         Assert.True(TenantHostContext.TryValidate(context, principal, out var reason));
         Assert.Null(reason);
@@ -22,8 +22,8 @@ public class TenantHostContextTests
     [Fact]
     public void TenantHost_WithDifferentTenant_IsRejected()
     {
-        var context = Request("t0042.auth.pandalabs.cn");
-        var principal = Principal("t0043", "t0043.auth.pandalabs.cn");
+        var context = Request("t0042-auth.s001.pandalabs.cn");
+        var principal = Principal("t0043", "t0043-auth.s001.pandalabs.cn");
 
         Assert.False(TenantHostContext.TryValidate(context, principal, out var reason));
         Assert.Equal(TenantContextErrors.ContextMismatch, reason);
@@ -32,11 +32,41 @@ public class TenantHostContextTests
     [Fact]
     public void TenantHost_WithMissingClaims_IsRejected()
     {
-        var context = Request("t0042.auth.pandalabs.cn");
+        var context = Request("t0042-auth.s001.pandalabs.cn");
         var principal = new ClaimsPrincipal(new ClaimsIdentity("cookie"));
 
         Assert.False(TenantHostContext.TryValidate(context, principal, out var reason));
         Assert.Equal(TenantContextErrors.ContextMismatch, reason);
+    }
+
+    [Fact]
+    public void DisabledTenantRouting_PreservesLegacyPassthrough()
+    {
+        var context = Request("t0042-auth.s001.pandalabs.cn");
+        var principal = new ClaimsPrincipal(new ClaimsIdentity("cookie"));
+
+        Assert.True(TenantHostContext.TryValidate(context, principal, out var reason, enabled: false));
+        Assert.Null(reason);
+    }
+
+    [Fact]
+    public void Localhost_DoesNotRequireTenantClaims()
+    {
+        var context = Request("localhost");
+        var principal = new ClaimsPrincipal(new ClaimsIdentity("cookie"));
+
+        Assert.True(TenantHostContext.TryValidate(context, principal, out var reason));
+        Assert.Null(reason);
+    }
+
+    [Fact]
+    public void LegacyTenantHost_IsTreatedAsNonTenantHost()
+    {
+        var context = Request("t0042.auth.pandalabs.cn");
+        var principal = new ClaimsPrincipal(new ClaimsIdentity("cookie"));
+
+        Assert.True(TenantHostContext.TryValidate(context, principal, out var reason));
+        Assert.Null(reason);
     }
 
     [Fact]
@@ -52,12 +82,23 @@ public class TenantHostContextTests
     [Fact]
     public void TenantHost_UsesTheCurrentHostAsOidcIssuer()
     {
-        var context = Request("t0042.auth.pandalabs.cn");
+        var context = Request("t0042-auth.s001.pandalabs.cn");
         context.Request.Scheme = "https";
 
-        var issuer = TenantOidcRouting.ResolveIssuer(context.Request, new Uri("https://auth.pandalabs.cn/"));
+        var issuer = TenantOidcRouting.ResolveIssuer(context.Request, new Uri("https://auth.appliket.com/"));
 
-        Assert.Equal("https://t0042.auth.pandalabs.cn/", issuer.ToString());
+        Assert.Equal("https://t0042-auth.s001.pandalabs.cn/", issuer.ToString());
+    }
+
+    [Fact]
+    public void PlatformHost_KeepsTheConfiguredIssuer()
+    {
+        var context = Request("auth.appliket.com");
+        context.Request.Scheme = "https";
+
+        var issuer = TenantOidcRouting.ResolveIssuer(context.Request, new Uri("https://auth.appliket.com/"));
+
+        Assert.Equal("https://auth.appliket.com/", issuer.ToString());
     }
 
     private static DefaultHttpContext Request(string host)

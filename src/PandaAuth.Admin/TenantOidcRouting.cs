@@ -7,12 +7,13 @@ public static class TenantOidcRouting
     public static Uri ResolveIssuer(HttpRequest request, Uri platformIssuer)
     {
         var host = request.Host.Host;
-        if (!TenantHostContext.LooksLikeTenantHost(host))
+        if (!TenantCanonicalHost.TryParse(host, out _, out var product, out _) ||
+            product != TenantProduct.PandaAuth)
+        {
             return platformIssuer;
+        }
 
-        // 后缀常量与主机判定同源（TenantHostContext）：两处各写一份字面量迟早漂移。
-        var prefix = host[..^TenantHostContext.TenantHostSuffix.Length];
-        TenantId.Parse(prefix);
-        return new Uri($"{request.Scheme}://{host}/");
+        // 规范租户主机：issuer 与主机同源。尾点归一，避免与 IDP 的 issuer 完全匹配失败。
+        return new Uri($"{request.Scheme}://{host.TrimEnd('.')}/");
     }
 }
