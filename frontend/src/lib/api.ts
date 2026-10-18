@@ -155,7 +155,14 @@ export type RoleClaim = { id: number; roleId: string; claimType: string; claimVa
 
 export type ClaimRequest = { claimType: string; claimValue: string; scope: string }
 
-export type ClientSummary = { clientId: string; displayName: string | null; clientType: string; consentType: string }
+export type ClientSummary = {
+  clientId: string
+  displayName: string | null
+  clientType: string
+  consentType: string
+  /** 第一方/平台客户端由部署流程维护，管理台只读（server 端同时硬拒绝写）。 */
+  isFirstParty: boolean
+}
 
 export type ClientDetail = ClientSummary & {
   redirectUris: string[]

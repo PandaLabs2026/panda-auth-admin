@@ -157,12 +157,18 @@ export default function ClientsPage() {
     }
   }
 
-  const isFirstParty = selected?.clientId === "admin-web" || selected?.clientId === "me-web"
+  // 保留名单由 server 的 FirstPartyClients.All 派生（不是前端硬编码列表）；server 端同时硬拒绝写。
+  const isFirstParty = selected?.isFirstParty ?? false
 
   return (
     <div className="space-y-6">
       {listError && <p role="alert" className="text-destructive">{listError}</p>}
       {shownError && <p role="alert" className="text-destructive">{shownError}</p>}
+      {isFirstParty && (
+        <p role="status" className="rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm text-warning">
+          {t("第一方/平台客户端由部署流程维护，管理台只读。")}
+        </p>
+      )}
 
       {secretNotice && (
         <div role="status" className="flex flex-wrap items-center gap-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
@@ -237,6 +243,7 @@ export default function ClientsPage() {
                     id="redirect"
                     className="min-h-28 min-w-0 font-mono text-xs"
                     value={redirectUris}
+                    readOnly={isFirstParty}
                     onChange={(event) => setRedirectUris(event.target.value)}
                   />
                 </div>
@@ -248,12 +255,13 @@ export default function ClientsPage() {
                     id="postlogout"
                     className="min-h-28 min-w-0 font-mono text-xs"
                     value={postLogoutUris}
+                    readOnly={isFirstParty}
                     onChange={(event) => setPostLogoutUris(event.target.value)}
                   />
                 </div>
               </div>
               <div className="md:col-span-2">
-                <Button size="sm" disabled={busy} onClick={() => void saveUris()}>
+                <Button size="sm" disabled={busy || isFirstParty} onClick={() => void saveUris()}>
                   {t("保存白名单")}
                 </Button>
               </div>
@@ -277,6 +285,7 @@ export default function ClientsPage() {
                         <label key={permission} className="flex items-center gap-1.5 text-xs">
                           <Checkbox
                             checked={permissions.has(permission)}
+                            disabled={isFirstParty}
                             onCheckedChange={(checked) => {
                               const next = new Set(permissions)
                               if (checked === true) next.add(permission)
@@ -294,7 +303,7 @@ export default function ClientsPage() {
               {(selected.requirements ?? []).length > 0 && (
                 <p className="text-xs text-muted-foreground">{t("既有要求（只读）：{list}", { list: selected.requirements.join("、") })}</p>
               )}
-              <Button size="sm" disabled={busy} onClick={() => void savePermissions()}>
+              <Button size="sm" disabled={busy || isFirstParty} onClick={() => void savePermissions()}>
                 {t("保存权限")}
               </Button>
             </CardContent>
@@ -305,23 +314,20 @@ export default function ClientsPage() {
               <CardHeader>
                 <CardTitle className="text-base text-warning">{t("密钥轮换")}</CardTitle>
                 <CardDescription>
-                  {t("生成 32 字节随机密钥，明文只显示一次；旧密钥立即作废。第一方客户端（admin-web / me-web）轮换后须同步服务器 env 并重跑迁移对账。")}
+                  {isFirstParty
+                    ? t("第一方/平台客户端由部署流程维护，管理台不提供密钥轮换。")
+                    : t("生成 32 字节随机密钥，明文只显示一次；旧密钥与既有令牌立即作废。")}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <ConfirmAction
                   trigger={
-                    <Button size="sm" variant="outline" disabled={busy}>
+                    <Button size="sm" variant="outline" disabled={busy || isFirstParty}>
                       {t("轮换密钥")}
                     </Button>
                   }
                   title={t("轮换 {id} 的密钥？", { id: selected.clientId })}
-                  description={
-                    t("旧密钥立即作废，新密钥仅显示一次。") +
-                    (isFirstParty
-                      ? t("⚠️ 这是第一方客户端：须同步更新服务器 env 并重跑 --migrate，否则其登录会全部失败！")
-                      : t("依赖旧密钥的集成需尽快更新。"))
-                  }
+                  description={t("旧密钥与既有令牌立即作废，新密钥仅显示一次。")}
                   confirmLabel={t("轮换密钥")}
                   successMessage={t("密钥已轮换")}
                   onConfirm={rotateSecret}

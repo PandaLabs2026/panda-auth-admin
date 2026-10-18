@@ -11,6 +11,7 @@ const summary = (clientId: string, displayName: string): ClientSummary => ({
   displayName,
   clientType: "confidential",
   consentType: "implicit",
+  isFirstParty: clientId === "admin-web" || clientId === "me-web",
 })
 
 const detail = (clientId: string, displayName: string): ClientDetail => ({
@@ -89,6 +90,24 @@ describe("ClientsPage list errors", () => {
     await user.click(await screen.findByText("me-web"))
 
     expect(await screen.findByText("network down")).toBeInTheDocument()
+  })
+})
+
+describe("ClientsPage first-party clients", () => {
+  it("marks platform clients read-only and disables every write action", async () => {
+    vi.stubGlobal("fetch", vi.fn((path: string) => {
+      if (path === "/admin/api/clients") return Promise.resolve(json(list))
+      if (path === "/admin/api/clients/options") return Promise.resolve(json({ permissionGroups: [] }))
+      if (path === "/admin/api/clients/admin-web") return Promise.resolve(json(detail("admin-web", "管理台")))
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    }))
+
+    render(<Providers initialEntries={["/?client=admin-web"]}><ClientsPage /></Providers>)
+
+    expect(await screen.findByText("第一方/平台客户端由部署流程维护，管理台只读。")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "保存白名单" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "保存权限" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "轮换密钥" })).toBeDisabled()
   })
 })
 
