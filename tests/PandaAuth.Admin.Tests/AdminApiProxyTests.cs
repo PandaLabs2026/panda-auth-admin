@@ -47,6 +47,7 @@ public class AdminApiProxyTests
         var identity = new ClaimsIdentity(
         [
             new Claim("sub", subject),
+            new Claim(AdminSessionLifecycle.SessionIdClaimType, $"session-{subject}"),
             new Claim("role", PandaAuthRoles.Admin),
         ], CookieAuthenticationDefaults.AuthenticationScheme, "name", "role");
         return (new ClaimsPrincipal(identity), properties);
@@ -72,14 +73,23 @@ public class AdminApiProxyTests
     private static AdminApiProxy CreateProxy(
         StubHttpMessageHandler handler,
         IHttpContextAccessor accessor,
-        IAdminSessionRefresher? sessionRefresher = null)
+        IAdminSessionRefresher? sessionRefresher = null,
+        AdminSessionLifecycle? lifecycle = null)
     {
         return new AdminApiProxy(
             // 生产侧 BaseAddress 由 AddHttpClient 配置；单测手动补齐。
             new HttpClient(handler) { BaseAddress = Issuer },
             sessionRefresher ?? null!,
+            lifecycle ?? new AdminSessionLifecycle(),
+            new StubSessionState(),
             accessor,
             new Logger<AdminApiProxy>(Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance));
+    }
+
+    private sealed class StubSessionState : IAdminSessionState
+    {
+        public Task<bool> IsRevokedAsync(string sessionId, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task RevokeAsync(string sessionId, CancellationToken cancellationToken) => Task.CompletedTask;
     }
 
     private static async Task<int> StatusOfAsync(IResult result)
@@ -141,6 +151,30 @@ public class AdminApiProxyTests
             PandaAuthAdminApi.UserStatus("u-1"), HttpMethod.Post, """{"status":9}""");
 
         Assert.Equal(StatusCodes.Status400BadRequest, await StatusOfAsync(response));
+    }
+
+    [Fact]
+    public async Task Forward_RefreshInFlightWhenLogoutOccurs_DoesNotRewriteSessionCookie()
+    {
+        var handler = new StubHttpMessageHandler(HttpStatusCode.Unauthorized);
+        var context = ContextWithTokens("token-1", "refresh-1");
+        var accessor = new StubHttpContextAccessor(context);
+        var lifecycle = new AdminSessionLifecycle();
+        var refresh = new StubRefreshClient(TimeSpan.FromMilliseconds(250));
+        var proxy = CreateProxy(handler, accessor, refresh, lifecycle);
+
+        var pending = proxy.ForwardAsync(PandaAuth.Shared.PandaAuthAdminApi.Users, HttpMethod.Get);
+        while (refresh.RefreshTokens.Count == 0)
+        {
+            await Task.Delay(5);
+        }
+
+        lifecycle.Revoke(context.User, new AuthenticationProperties());
+        var response = await pending;
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, await StatusOfAsync(response));
+        Assert.Empty(handler.Requests.Skip(1));
+        Assert.Equal("refresh-1", Assert.Single(refresh.RefreshTokens));
     }
 
     [Fact]

@@ -35,7 +35,7 @@ import {
   type UserSummary,
 } from "@/lib/api"
 import { useSession } from "@/lib/auth"
-import { clearDraft, consumeDraft, saveDraft } from "@/lib/drafts"
+import { clearDraft, consumeDraft, saveDraft, saveDraftWithoutPassword, withoutPassword } from "@/lib/drafts"
 import { notify } from "@/lib/notify"
 import { useI18n } from "@/lib/i18n"
 
@@ -213,7 +213,7 @@ export default function UsersPage() {
     const saved = consumeDraft<CreateDraft>("users.create")
     if (saved) {
       setCreating(true)
-      setDraft(saved)
+      setDraft(withoutPassword(saved))
     }
   }, [])
 
@@ -249,7 +249,7 @@ export default function UsersPage() {
       return
     }
     setBusy(true)
-    saveDraft("users.create", draft)
+    saveDraftWithoutPassword("users.create", draft)
     try {
       const response = await apiSend<CreateUserResponse>("POST", "/admin/api/users", {
         userName: draft.userName.trim(),

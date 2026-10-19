@@ -116,3 +116,19 @@ describe("serverError rendering", () => {
     expect((caught as ApiError).message).toBe("管理端重置会强制下线目标账号的全部会话。")
   })
 })
+describe("apiGet ProblemDetails", () => {
+  it("parses server detail and stable code from GET failures", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({
+      status: 503,
+      title: "Upstream unavailable",
+      detail: "用户服务暂不可用。",
+      extensions: { code: "server.upstream_unavailable" },
+    }, { status: 503 }))))
+
+    await expect(apiGet("/admin/api/users?page=1")).rejects.toMatchObject({
+      name: "ApiError",
+      message: "用户服务暂不可用。",
+      code: "server.upstream_unavailable",
+    })
+  })
+})

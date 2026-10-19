@@ -6,6 +6,7 @@
  */
 
 import { currentLocale, serverMessagesEn } from "@/i18n/config"
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout"
 
 const MFA_REQUIRED_HEADER = "X-Panda-Mfa-Required"
 
@@ -25,6 +26,23 @@ export class ApiError extends Error {
   }
 }
 
+export async function problemDetailsError(response: Response): Promise<ApiError> {
+  let detail = "请求失败(HTTP " + response.status + ")"
+  let code: string | undefined
+  try {
+    const problem = (await response.json()) as {
+      detail?: string
+      title?: string
+      extensions?: { code?: string }
+    }
+    detail = problem.detail ?? problem.title ?? detail
+    code = typeof problem.extensions?.code === "string" ? problem.extensions.code : undefined
+  } catch {
+    // Keep the status fallback for empty or non-JSON failures.
+  }
+  return new ApiError(detail, code)
+}
+
 /** 错误渲染:en 下有码走 server 词典,无码/未知码/zh 显示服务端原文。 */
 export function serverError(error: unknown): string {
   const message = error instanceof Error ? error.message : "加载失败"
@@ -34,7 +52,7 @@ export function serverError(error: unknown): string {
 }
 
 async function fetchAntiforgeryToken(): Promise<string> {
-  const response = await fetch("/admin/api/antiforgery", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+  const response = await fetchWithTimeout("/admin/api/antiforgery", { headers: { "X-Requested-With": "XMLHttpRequest" } })
   if (!response.ok) throw new Error(`antiforgery ${response.status}`)
   const { token } = (await response.json()) as { token: string }
   return token
@@ -80,9 +98,9 @@ export type Session = {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { "X-Requested-With": "XMLHttpRequest" } })
+  const response = await fetchWithTimeout(path, { headers: { "X-Requested-With": "XMLHttpRequest" } })
   if (response.status === 401) unauthorized()
-  if (!response.ok) throw new Error(`请求失败(HTTP ${response.status})`)
+  if (!response.ok) throw await problemDetailsError(response)
   // 会话 Cookie 过期时 BFF 返回 302 → fetch 跟随重定向最终拿到登录页 HTML（200）：
   // JSON 解析必然失败，统一折算为带 returnUrl 的登录跳转而不是莫名的解析报错。
   const contentType = response.headers.get("content-type") ?? ""
@@ -92,7 +110,7 @@ export async function apiGet<T>(path: string): Promise<T> {
 
 export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   const token = await fetchAntiforgeryToken()
-  const response = await fetch(path, {
+  const response = await fetchWithTimeout(path, {
     method,
     headers: {
       "Content-Type": "application/json",

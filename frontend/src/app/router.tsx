@@ -3,7 +3,7 @@ import { createBrowserRouter, useNavigate } from "react-router"
 import { KeyRoundIcon, LogOutIcon } from "lucide-react"
 import AppLayout, { type NavItem } from "@/components/patterns/AppLayout"
 import HeaderActions from "@/components/header-actions"
-import RequireAuth from "@/components/patterns/RequireAuth"
+import { SessionGate } from "@/app/SessionGate"
 import ForbiddenPage from "@/pages/ForbiddenPage"
 import LoginPage from "@/pages/login"
 import NotFoundPage from "@/pages/NotFoundPage"
@@ -11,6 +11,7 @@ import ServerErrorPage from "@/pages/ServerErrorPage"
 import { sessionApi, registerSessionExpiredHandler } from "@/lib/auth"
 import { NAV } from "@/lib/nav"
 import { useI18n } from "@/lib/i18n"
+import { notify } from "@/lib/notify"
 
 /**
  * 路由(模板 v0.5.0 形态):/login 独立无布局,其余挂在 AppLayout(侧栏+固定顶栏)
@@ -47,7 +48,13 @@ function useCommandActions() {
       icon: KeyRoundIcon,
       run: () => window.location.assign("/account/change-password?returnUrl=/admin"),
     },
-    { id: "logout", label: t("退出登录"), icon: LogOutIcon, shortcut: "⌘⇧Q", run: () => void sessionApi.logout() },
+    {
+      id: "logout",
+      label: t("退出登录"),
+      icon: LogOutIcon,
+      shortcut: "⌘⇧Q",
+      run: () => void sessionApi.logout().catch((error) => notify.failure(error, "退出登录失败；当前会话未确认已注销。")),
+    },
   ]
 }
 
@@ -96,9 +103,9 @@ export const router = createBrowserRouter(
       element: (
         <>
           <SessionExpiredBridge />
-          <RequireAuth>
+          <SessionGate>
             <AppShell />
-          </RequireAuth>
+          </SessionGate>
         </>
       ),
       children: [

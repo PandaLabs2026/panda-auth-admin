@@ -64,12 +64,62 @@ builder.Services
         // 这是安全与免重复登录之间的取舍，与 me 的差异是刻意的（管理面 vs 终端用户面）。
         options.ExpireTimeSpan = TimeSpan.FromHours(2);
         options.SlidingExpiration = true;
+        options.Events.OnValidatePrincipal = async context =>
+        {
+            var lifecycle = context.HttpContext.RequestServices.GetRequiredService<AdminSessionLifecycle>();
+            var identity = context.Principal?.Identity as ClaimsIdentity;
+            if (identity is not null)
+            {
+                if (!AdminSessionLifecycle.TryGetSessionId(context.Principal, out _))
+                {
+                    if (!AdminSessionLifecycle.TryCreateLegacySessionId(context.Principal, context.Properties, out var legacySessionId))
+                    {
+                        context.RejectPrincipal();
+                        return;
+                    }
+                    identity.AddClaim(new Claim(AdminSessionLifecycle.SessionIdClaimType, legacySessionId));
+                    context.ShouldRenew = true;
+                }
+                var hasStartedAtClaim = context.Principal?.FindFirst(AdminSessionLifecycle.StartedAtClaimType) is not null;
+                if (!AdminSessionLifecycle.TryGetSessionStartedAt(context.Principal, context.Properties, out var startedAt))
+                {
+                    context.RejectPrincipal();
+                    return;
+                }
+                if (!hasStartedAtClaim)
+                {
+                    identity.AddClaim(new Claim(AdminSessionLifecycle.StartedAtClaimType,
+                        startedAt.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+                    context.ShouldRenew = true;
+                }
+            }
+            var absoluteExpired = AdminSessionLifecycle.IsAbsoluteExpired(context.Principal, DateTimeOffset.UtcNow);
+            var remote = context.HttpContext.RequestServices.GetRequiredService<IAdminSessionState>();
+            if (absoluteExpired)
+            {
+                if (AdminSessionLifecycle.TryGetSessionId(context.Principal, out var expiredSid))
+                    await remote.RevokeAsync(expiredSid, context.HttpContext.RequestAborted);
+                context.RejectPrincipal();
+            }
+            else if (lifecycle.IsRevoked(context.Principal, context.Properties)
+                || (AdminSessionLifecycle.TryGetSessionId(context.Principal, out var sid)
+                    && await remote.IsRevokedAsync(sid, context.HttpContext.RequestAborted)))
+            {
+                context.RejectPrincipal();
+            }
+
+            return;
+        };
     });
 
 // 会话 Cookie 与防伪令牌由 DataProtection 保护。Auth:DataProtectionKeyPath 非空时持久化密钥环
 // （生产由 compose 注入卷路径），容器重建后既有登录态不失效；默认空串 = 临时密钥，仅限开发环境。
 // 应用名固定为 PandaAuth.Admin：不同服务不共用密钥环，各服务的卷本就独立。
 var dataProtectionKeyPath = builder.Configuration["Auth:DataProtectionKeyPath"];
+if (string.IsNullOrWhiteSpace(dataProtectionKeyPath) && !builder.Environment.IsDevelopment())
+{
+    throw new InvalidOperationException("非开发环境必须配置 Auth:DataProtectionKeyPath 持久目录。");
+}
 if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
 {
     // 路径必须已存在：生产由 compose 命名卷挂载保证；不存在即说明「配置路径与卷挂载点不一致」，
@@ -95,8 +145,11 @@ if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
 // 位置必须在首个 new Uri(...) 之前：空值先在这里被拦下，否则 Uri 构造先炸出 UriFormatException。
 if (builder.Environment.IsProduction())
 {
-    if (string.IsNullOrWhiteSpace(builder.Configuration["Auth:Issuer"])
-        || string.Equals(builder.Configuration["Auth:Issuer"]!.Trim(), "http://localhost:9004/", StringComparison.OrdinalIgnoreCase))
+    var productionIssuer = builder.Configuration["Auth:Issuer"]?.Trim();
+    if (string.IsNullOrWhiteSpace(productionIssuer)
+        || string.Equals(productionIssuer, "http://localhost:9004/", StringComparison.OrdinalIgnoreCase)
+        || !Uri.TryCreate(productionIssuer, UriKind.Absolute, out var parsedIssuer)
+        || parsedIssuer.Scheme != Uri.UriSchemeHttps)
     {
         throw new InvalidOperationException("Auth:Issuer 缺失或仍是开发默认值（生产不得使用 http://localhost:9004/，须由部署环境注入真实 issuer）。");
     }
@@ -106,6 +159,12 @@ if (builder.Environment.IsProduction())
     {
         throw new InvalidOperationException("Auth:IdpInternalBaseAddress 缺失或仍是开发默认值（生产须由部署环境注入代理上游地址）。");
     }
+    if (!Uri.TryCreate(builder.Configuration["Auth:IdpInternalBaseAddress"], UriKind.Absolute, out var parsedInternal)
+        || (parsedInternal.Scheme != Uri.UriSchemeHttp && parsedInternal.Scheme != Uri.UriSchemeHttps))
+        throw new InvalidOperationException("Auth:IdpInternalBaseAddress 必须是绝对 HTTP(S) URI。");
+
+    if (string.IsNullOrWhiteSpace(builder.Configuration["Auth:SessionState:ClientSecret"]))
+        throw new InvalidOperationException("缺少 Auth:SessionState:ClientSecret 配置（生产必须注入 Admin 专用会话 API 密钥）。");
 }
 
 // OpenIddict 客户端加密/签名密钥（保护在途登录 state）：DP 路径已配置则同目录 load-or-create
@@ -139,6 +198,15 @@ builder.Services.AddTokenRevocation(builder.Configuration, new TokenRevocationOp
 // IDP 侧另有 Bearer + admin 角色门禁，双保险。
 var idpInternalBase = builder.Configuration["Auth:IdpInternalBaseAddress"] ?? "http://127.0.0.1:9004/";
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<AdminSessionLifecycle>();
+builder.Services.AddHttpClient("session-state", client =>
+{
+    client.BaseAddress = new Uri(idpInternalBase);
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+builder.Services.AddSingleton<IAdminSessionState>(services => new SessionStateClient(
+    services.GetRequiredService<IHttpClientFactory>().CreateClient("session-state"),
+    services.GetRequiredService<IConfiguration>()));
 // 会话刷新接缝：生产实现包装 OpenIddict 客户端；单测经该接口桩刷新链路
 //（OpenIddictClientService 的刷新方法非虚，具体类无法继承重写）。
 builder.Services.AddSingleton<IAdminSessionRefresher, OpenIddictAdminSessionRefresher>();
@@ -402,7 +470,9 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
         "回调诊断：AT={HasAt} RT={HasRt}",
         resultProperties.GetTokenValue("backchannel_access_token") is not null,
         resultProperties.GetTokenValue(SessionTokens.RefreshTokenName) is not null);
+    identity.AddClaim(new Claim(AdminSessionLifecycle.SessionIdClaimType, AdminSessionLifecycle.NewSessionId()));
     var properties = new AuthenticationProperties();
+    identity.AddClaim(new Claim(AdminSessionLifecycle.StartedAtClaimType, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)));
     var tokens = new List<AuthenticationToken>();
     if (resultProperties.GetTokenValue("backchannel_access_token") is { } accessToken)
     {
@@ -476,12 +546,21 @@ async Task<IResult> WithAntiforgeryAsync(HttpContext ctx, Func<Task<IResult>> ha
 
 // 登出：防伪校验 → 撤销 IDP 令牌（尽力而为）→ 清本地会话 → RP 端到端登出（end-session）。
 // 不匿名豁免：登出只对已登录会话有意义；匿名 POST 由 FallbackPolicy 拦下（302，前端仅在有会话时调用）。
-app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient revocationClient) =>
+app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient revocationClient, AdminSessionLifecycle sessionLifecycle, IAdminSessionState sessionStateClient) =>
     WithAntiforgeryAsync(context, async () =>
     {
         // 先取令牌再登出：Cookie 清除后票据内的令牌不可恢复。
-        var (accessToken, refreshToken) = SessionTokens.Read(
-            await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme));
+        var session = await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        var (accessToken, refreshToken) = SessionTokens.Read(session);
+        sessionLifecycle.Revoke(session.Principal ?? context.User, session.Properties);
+        if (AdminSessionLifecycle.TryGetSessionId(session.Principal ?? context.User, out var sessionId))
+        {
+            try { await sessionStateClient.RevokeAsync(sessionId, context.RequestAborted); }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
+            {
+                return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "会话撤销服务不可用");
+            }
+        }
 
         await revocationClient.RevokeAsync(
             accessToken,

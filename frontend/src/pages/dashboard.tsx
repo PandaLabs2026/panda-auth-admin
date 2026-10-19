@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import SemanticBadge from "@/components/semantic-badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useSession } from "@/lib/auth"
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout"
 import { NAV } from "@/lib/nav"
 import { useI18n } from "@/lib/i18n"
 
@@ -39,7 +40,7 @@ export default function DashboardPage() {
   // IDP 状态：discovery 是公网同源端点，CSP（connect-src 'self'）放行，无需 BFF 代理，
   // 也没有会话语义——保持直取，不经 apiGet。
   useEffect(() => {
-    fetch("/.well-known/openid-configuration", { headers: { "X-Requested-With": "XMLHttpRequest" } })
+    fetchWithTimeout("/.well-known/openid-configuration", { headers: { "X-Requested-With": "XMLHttpRequest" } })
       .then(async (response) => (response.ok ? ((await response.json()) as Discovery) : null))
       .then((data) => {
         setDiscovery(data)

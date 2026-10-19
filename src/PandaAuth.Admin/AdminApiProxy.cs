@@ -25,6 +25,8 @@ namespace PandaAuth.Admin;
 public sealed class AdminApiProxy(
     HttpClient httpClient,
     IAdminSessionRefresher sessionRefresher,
+    AdminSessionLifecycle sessionLifecycle,
+    IAdminSessionState persistentSessionState,
     IHttpContextAccessor httpContextAccessor,
     ILogger<AdminApiProxy> logger)
 {
@@ -60,7 +62,18 @@ public sealed class AdminApiProxy(
         var context = httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("AdminApiProxy 只能在请求上下文内使用。");
 
-        var tokens = await ReadSessionTokensAsync(context);
+        var session = await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        if (sessionLifecycle.IsRevoked(session.Principal ?? context.User, session.Properties))
+        {
+            return Results.Unauthorized();
+        }
+        if (!AdminSessionLifecycle.TryGetSessionId(session.Principal ?? context.User, out var sessionId)
+            || await persistentSessionState.IsRevokedAsync(sessionId, cancellationToken))
+        {
+            return Results.Unauthorized();
+        }
+
+        var tokens = SessionTokens.Read(session);
         if (tokens.AccessToken is null)
         {
             // 会话里没有 AT（理论不该发生：登录回调都会 StoreTokens）——按未认证处理。
@@ -106,9 +119,6 @@ public sealed class AdminApiProxy(
                 detail: "管理数据服务暂时不可用，请稍后重试。");
         }
     }
-
-    private static async Task<(string? AccessToken, string? RefreshToken)> ReadSessionTokensAsync(HttpContext context)
-        => SessionTokens.Read(await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme));
 
     private static async Task<HttpResponseMessage> SendAsync(
         HttpClient httpClient,
@@ -168,6 +178,15 @@ public sealed class AdminApiProxy(
         {
             var session = await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
             var latest = SessionTokens.Read(session);
+            if (sessionLifecycle.IsRevoked(session.Principal ?? context.User, session.Properties))
+            {
+                return null;
+            }
+            if (!AdminSessionLifecycle.TryGetSessionId(session.Principal ?? context.User, out var sessionId)
+                || await persistentSessionState.IsRevokedAsync(sessionId, cancellationToken))
+            {
+                return null;
+            }
 
             // 层一（票据重读）：请求晚于他人刷新完成到达（浏览器已吃到新 Cookie）时，
             // 票据里已是新 RT——直接复用新 AT，连 IDP 都不必问。
@@ -210,6 +229,12 @@ public sealed class AdminApiProxy(
         try
         {
             var result = await sessionRefresher.RefreshAsync(context, refreshToken, cancellationToken);
+            if (sessionLifecycle.IsRevoked(context.User, session.Properties)
+                || !AdminSessionLifecycle.TryGetSessionId(context.User, out var sessionId)
+                || await persistentSessionState.IsRevokedAsync(sessionId, cancellationToken))
+            {
+                return null;
+            }
 
             // 沿用既有会话身份、只更新令牌——刻意**不**用刷新 principal 重建身份：
             // 刷新流不经过 userinfo 并入，principal 不带 roles claim（IDP 把角色只写入 AT），
