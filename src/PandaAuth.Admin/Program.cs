@@ -121,6 +121,8 @@ if (!string.IsNullOrWhiteSpace(dataProtectionKeyPath))
 // IDP 侧取值集中取出：OpenIddict 客户端注册与登出撤销客户端共用同一组配置，避免两份事实源。
 var issuer = new Uri(builder.Configuration["Auth:Issuer"] ?? "http://localhost:9004/");
 var clientId = builder.Configuration["Auth:ClientId"] ?? "admin-web";
+// 租户主机校验总开关：默认关闭，与服务端 Auth:TenantRouting:Enabled 同一发布节奏。
+var tenantRoutingEnabled = builder.Configuration.GetValue<bool>("Auth:TenantRouting:Enabled");
 // 机密客户端密钥失败关闭：缺失/为空即拒绝启动，不回退明文默认值（与 server 侧 Seeder、me 侧行为对齐）。
 var clientSecret = builder.Configuration["Auth:ClientSecret"];
 if (string.IsNullOrWhiteSpace(clientSecret))
@@ -360,7 +362,7 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
 
     var (identity, isAdmin) = AdminSessionIdentity.Build(result.Principal);
 
-    if (!TenantHostContext.TryValidate(context, result.Principal, out var tenantReason))
+    if (!TenantHostContext.TryValidate(context, result.Principal, out var tenantReason, tenantRoutingEnabled))
     {
         logger.LogWarning(
             "管理后台登录被拒：OIDC 租户声明与请求主机不一致或主机未知（reason={Reason}, host={Host}）。",
