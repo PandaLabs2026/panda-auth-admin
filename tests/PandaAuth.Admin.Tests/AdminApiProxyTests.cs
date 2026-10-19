@@ -267,6 +267,24 @@ public class AdminApiProxyTests
     }
 
     [Fact]
+    public async Task Forward_Upstream403Mfa_DoesNotRefreshTokens()
+    {
+        // 关键决策：MFA 门禁只能由前端重新走一次授权码来修复；403 绝不能触发 refresh，
+        // 因为 refresh token 的 principal 在签发时已冻结，刷新只会继承旧 MFA 声明。
+        var handler = new StubHttpMessageHandler(HttpStatusCode.Forbidden) { Body = string.Empty };
+        var refresh = new StubRefreshClient(TimeSpan.Zero);
+        var accessor = new StubHttpContextAccessor(ContextWithTokens("token-1", "refresh-1"));
+
+        var response = await CreateProxy(handler, accessor, refresh).ForwardAsync(
+            PandaAuthAdminApi.UserStatus("u-1"), HttpMethod.Post);
+
+        var (status, headers, _) = await ExecuteAsync(response);
+        Assert.Equal(StatusCodes.Status403Forbidden, status);
+        Assert.Equal("true", headers["X-Panda-Mfa-Required"].ToString());
+        Assert.Empty(refresh.RefreshTokens);
+    }
+
+    [Fact]
     public async Task Forward_Upstream403EmptyBody_MarksMfaHeader_Transitional()
     {
         // 过渡期兼容（钉住 server 现状）：server 仓 15 处 MFA/WebAuthn 门禁全部是裸 Forbid()，

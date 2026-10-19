@@ -47,10 +47,25 @@ function unauthorized(): never {
   throw new Error("unauthorized")
 }
 
-/** 上游 MFA 门禁命中（403 + 标记头）才跳 step-up；到 IDP 完成验证后回原操作。 */
+/**
+ * MFA step-up 的跳转地址：先回 BFF challenge，再回原页面。
+ *
+ * 为什么不能直接回原页：IDP 的 step-up 只重签自己的登录 Cookie（MarkMfaAsync），
+ * BFF 会话里的 Access Token 仍是 step-up 之前那次授权码的产物；refresh token 的
+ * principal 也在签发时冻结，刷新只会继承旧 MFA 声明。直接回原页重发请求仍会 403。
+ * 先回 /admin/challenge 会重新走一次授权码，BFF 才能拿到带新 panda_mfa_at 的 AT。
+ *
+ * 两层编码：内层是 authorize 的 returnUrl，外层是 IDP MFA 页的 returnUrl。
+ */
+export function buildStepUpUrl(pathname: string, search: string): string {
+  const original = `${pathname}${search}`
+  const reauth = `/admin/challenge?returnUrl=${encodeURIComponent(original)}`
+  return `/account/mfa?returnUrl=${encodeURIComponent(reauth)}`
+}
+
+/** 上游 MFA 门禁命中（403 + 标记头）才跳 step-up；完成验证后经 challenge 换新 AT 再回原操作。 */
 function mfaRequired(): never {
-  const returnUrl = encodeURIComponent(window.location.pathname + window.location.search)
-  window.location.assign(`/account/mfa?returnUrl=${returnUrl}`)
+  window.location.assign(buildStepUpUrl(window.location.pathname, window.location.search))
   throw new Error("mfa_required")
 }
 
