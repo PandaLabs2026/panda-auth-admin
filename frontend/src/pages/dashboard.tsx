@@ -40,8 +40,11 @@ export default function DashboardPage() {
   // IDP 状态：discovery 是公网同源端点，CSP（connect-src 'self'）放行，无需 BFF 代理，
   // 也没有会话语义——保持直取，不经 apiGet。
   useEffect(() => {
-    fetchWithTimeout("/.well-known/openid-configuration", { headers: { "X-Requested-With": "XMLHttpRequest" } })
-      .then(async (response) => (response.ok ? ((await response.json()) as Discovery) : null))
+    fetchWithTimeout(
+      "/.well-known/openid-configuration",
+      { headers: { "X-Requested-With": "XMLHttpRequest" } },
+      async (response) => (response.ok ? ((await response.json()) as Discovery) : null),
+    )
       .then((data) => {
         setDiscovery(data)
         setDiscoveryFailed(data === null)
