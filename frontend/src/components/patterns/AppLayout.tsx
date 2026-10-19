@@ -22,6 +22,7 @@ import CommandPalette from './CommandPalette';
 import { Toaster } from '@/components/ui/sonner';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useLogout, useSession } from '@/lib/auth';
+import { notify } from '@/lib/notify';
 
 /**
  * 统一后台骨架（v0.2 整装，v0.4.3 内容区全宽化）：侧栏 + 固定顶栏 + Outlet 内容区。
@@ -110,7 +111,11 @@ export default function AppLayout({
           <NavUser
             name={session?.displayName ?? '未登录'}
             email={session?.email}
-            onLogout={() => logout.mutate()}
+            onLogout={() =>
+              logout.mutate(undefined, {
+                onError: (error) => notify.failure(error, "退出登录失败；当前会话未确认已注销。"),
+              })
+            }
           >
             {/* 账号自助外链模式:身份属性(姓名/邮箱/密码/MFA)唯一正本在 IDP,
                 应用只经会话下发的 accountEntryUrl 跳转;改完回应用,会话到下次刷新才更新。 */}

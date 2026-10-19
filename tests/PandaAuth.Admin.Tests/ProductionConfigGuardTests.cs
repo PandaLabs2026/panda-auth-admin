@@ -23,6 +23,10 @@ public class ProductionConfigGuardTests
             builder.UseEnvironment("Production");
             // ClientSecret 的失败关闭先于本守卫：注入之以隔离被测的两个键。
             builder.UseSetting("Auth:ClientSecret", "unit-test-secret");
+            builder.UseSetting("Auth:SessionState:ClientSecret", "unit-test-session-secret");
+            var keyDirectory = Path.Combine(AppContext.BaseDirectory, "production-config-keys");
+            Directory.CreateDirectory(keyDirectory);
+            builder.UseSetting("Auth:DataProtectionKeyPath", keyDirectory);
             configure(builder);
         });
 
@@ -67,6 +71,38 @@ public class ProductionConfigGuardTests
 
         Assert.NotNull(exception);
         Assert.Contains("Auth:Issuer", exception.ToString());
+    }
+
+    [Fact]
+    public void Production_WithoutSessionStateSecret_RefusesToStart()
+    {
+        using var factory = Factory(builder =>
+        {
+            builder.UseSetting("Auth:Issuer", "https://auth.pandalabs.cn/");
+            builder.UseSetting("Auth:IdpInternalBaseAddress", "http://127.0.0.1:6000/");
+            builder.UseSetting("Auth:SessionState:ClientSecret", "");
+        });
+
+        var exception = Record.Exception(() => factory.CreateClient());
+
+        Assert.NotNull(exception);
+        Assert.Contains("Auth:SessionState:ClientSecret", exception.ToString());
+    }
+
+    [Fact]
+    public void Production_WithoutDataProtectionPath_RefusesToStart()
+    {
+        using var factory = Factory(builder =>
+        {
+            builder.UseSetting("Auth:Issuer", "https://auth.pandalabs.cn/");
+            builder.UseSetting("Auth:IdpInternalBaseAddress", "http://127.0.0.1:6000/");
+            builder.UseSetting("Auth:DataProtectionKeyPath", "");
+        });
+
+        var exception = Record.Exception(() => factory.CreateClient());
+
+        Assert.NotNull(exception);
+        Assert.Contains("Auth:DataProtectionKeyPath", exception.ToString());
     }
 
     [Fact]

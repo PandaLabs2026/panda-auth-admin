@@ -104,6 +104,9 @@ public class RouteGuardTests
             builder.UseEnvironment("Development");
             builder.ConfigureServices(services =>
             {
+                // Cross-instance revocation is exercised in SessionStateClientTests; this route test
+                // isolates proxy URI composition and must not contact a real IDP.
+                services.AddSingleton<IAdminSessionState>(new AllowSessionState());
                 // 换掉 Cookie 方案的票据格式器：真实 DataProtection 密钥环在测试里无从预置，
                 // 直通格式器让测试能以同一格式直签带 access_token 的会话票据（Cookie 名与
                 // 方案名仍是生产的 PandaAuth.Admin / Cookies）。
@@ -116,6 +119,12 @@ public class RouteGuardTests
             });
         }
 
+        private sealed class AllowSessionState : IAdminSessionState
+        {
+            public Task<bool> IsRevokedAsync(string sessionId, CancellationToken cancellationToken) => Task.FromResult(false);
+            public Task RevokeAsync(string sessionId, CancellationToken cancellationToken) => Task.CompletedTask;
+        }
+
         /// <summary>直签带 access_token 的会话票据 Cookie 值（代理见到 AT 才会真正发上游请求）。</summary>
         public string MintSessionCookie()
         {
@@ -123,6 +132,8 @@ public class RouteGuardTests
             [
                 new Claim(Claims.Subject, "spy-admin"),
                 new Claim(Claims.Role, PandaAuthRoles.Admin),
+                new Claim(AdminSessionLifecycle.SessionIdClaimType, "spy-admin-session"),
+                new Claim(AdminSessionLifecycle.StartedAtClaimType, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)),
             ], CookieAuthenticationDefaults.AuthenticationScheme, Claims.Name, Claims.Role);
             var properties = new AuthenticationProperties();
             properties.StoreTokens(

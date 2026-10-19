@@ -39,6 +39,7 @@ public sealed class BridgeRuntimeTests
             {
                 builder.UseEnvironment("Production");
                 builder.UseSetting("Auth:ClientSecret", "fixture-secret");
+                builder.UseSetting("Auth:SessionState:ClientSecret", "fixture-session-secret");
                 builder.UseSetting("Auth:Issuer", "https://idp.example.invalid/");
                 builder.UseSetting("Auth:IdpInternalBaseAddress", "http://127.0.0.1:6000/");
                 builder.UseSetting("Auth:DataProtectionKeyPath", directory);

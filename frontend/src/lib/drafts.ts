@@ -32,3 +32,14 @@ export function clearDraft(key: string): void {
     // 同 saveDraft:存储不可用即无操作。
   }
 }
+
+
+/** Remove a legacy or in-memory initial password before a draft is persisted or restored. */
+export function withoutPassword<T extends { password: string }>(value: T): T {
+  return { ...value, password: "" }
+}
+
+/** Keep non-secret form state across step-up, but never persist the initial password. */
+export function saveDraftWithoutPassword<T extends { password: string }>(key: string, value: T): void {
+  saveDraft(key, withoutPassword(value))
+}

@@ -1,4 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout"
+import { problemDetailsError } from "@/lib/api"
 
 /**
  * 认证会话（真实 BFF 版，对齐模板 v0.5.0 会话层契约）：
@@ -63,32 +65,43 @@ export function handleUnauthorized() {
 export const sessionApi = {
   /** 会话探测：未登录/会话失效（401 或 302→登录页 HTML）静默收敛为 null，守卫据此跳登录页。 */
   async me(): Promise<Session | null> {
-    let res: Response
-    try {
-      res = await fetch("/admin/api/session", { headers: { "X-Requested-With": "XMLHttpRequest" } })
-    } catch {
-      return null
-    }
-    if (!res.ok) return null
-    const contentType = res.headers.get("content-type") ?? ""
-    if (!contentType.includes("application/json")) return null
-    return toSession((await res.json()) as BffSession)
+    return fetchWithTimeout(
+      "/admin/api/session",
+      { headers: { "X-Requested-With": "XMLHttpRequest" } },
+      async (res) => {
+        if (res.status === 401) return null
+        if (!res.ok) throw await problemDetailsError(res)
+        const contentType = res.headers.get("content-type") ?? ""
+        if (!contentType.includes("application/json")) return null
+        return toSession((await res.json()) as BffSession)
+      },
+      10_000,
+    )
   },
 
   /** 登出：防伪令牌成对 POST；BFF 的 end-session 重定向链被 fetch 静默跟随，必须显式整页回登录页。 */
   async logout(): Promise<void> {
-    try {
-      const res = await fetch("/admin/api/antiforgery", { headers: { "X-Requested-With": "XMLHttpRequest" } })
-      if (res.ok) {
-        const { token } = (await res.json()) as { token: string }
-        await fetch("/admin/api/logout", {
-          method: "POST",
-          headers: { "X-XSRF-Token": token, "X-Requested-With": "XMLHttpRequest" },
-        })
-      }
-    } finally {
-      window.location.assign("/admin/login")
-    }
+    const token = await fetchWithTimeout(
+      "/admin/api/antiforgery",
+      { headers: { "X-Requested-With": "XMLHttpRequest" } },
+      async (antiforgery) => {
+        if (!antiforgery.ok) throw await problemDetailsError(antiforgery)
+        return ((await antiforgery.json()) as { token: string }).token
+      },
+      10_000,
+    )
+    await fetchWithTimeout(
+      "/admin/api/logout",
+      {
+        method: "POST",
+        headers: { "X-XSRF-Token": token, "X-Requested-With": "XMLHttpRequest" },
+      },
+      async (response) => {
+        if (!response.ok) throw await problemDetailsError(response)
+      },
+      10_000,
+    )
+    window.location.assign("/admin/login")
   },
 }
 
