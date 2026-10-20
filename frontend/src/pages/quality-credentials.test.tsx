@@ -93,7 +93,7 @@ describe("credential and draft ownership", () => {
     render(<Providers><UsersPage /></Providers>)
     await user.click(screen.getByRole("button", { name: "新建用户" }))
     await user.type(screen.getByLabelText("用户名 *"), "bob")
-    await user.click(screen.getByRole("button", { name: "创建", exact: true }))
+    await user.click(screen.getByRole("button", { name: "创建" }))
     await screen.findByText("账号详情 · bob")
     expect(await screen.findByText(secret)).toBeInTheDocument()
     expect(JSON.stringify({ ...sessionStorage })).not.toContain(secret)
