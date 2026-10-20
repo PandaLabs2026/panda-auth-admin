@@ -26,6 +26,12 @@ function toUserMessage(cause: unknown): Error {
   return new Error(serverError(cause))
 }
 
+function positiveInteger(value: string | null, fallback: number, maximum: number): number {
+  if (!value || !/^[1-9]\d*$/.test(value)) return fallback
+  const number = Number(value)
+  return Number.isSafeInteger(number) && number <= maximum ? number : fallback
+}
+
 /**
  * 客户端管理（0.3）：列表 / 详情 / 回调与登出白名单编辑 / 权限编辑（目录复选） / 密钥轮换。
  * 白名单与权限都是**整体替换**语义（与 server 的 upsert 口径一致）。
@@ -36,7 +42,9 @@ export default function ClientsPage() {
   const { t } = useI18n()
   const queryClient = useQueryClient()
   const [searchParams, setSearchParams] = useSearchParams()
-  const clientId = searchParams.get("client")
+  const clientId = searchParams.get("client") || null
+  const page = positiveInteger(searchParams.get("page"), 1, 2_147_483_647)
+  const pageSize = positiveInteger(searchParams.get("pageSize"), 20, 50)
 
   const updateParams = useCallback(
     (patch: Record<string, string | null>, options?: { replace?: boolean }) => {
@@ -64,8 +72,8 @@ export default function ClientsPage() {
   // 读侧经 useQuery(P3 迁移):目录/选项常驻,详情键=[clientId](键语义取代乱序守卫——
   // 慢的旧详情只写进旧键缓存,不会覆盖新选中)。
   const listQuery = useQuery({
-    queryKey: ["clients"],
-    queryFn: () => apiGet<PageResult<ClientSummary>>("/admin/api/clients"),
+    queryKey: ["clients", page, pageSize],
+    queryFn: () => apiGet<PageResult<ClientSummary>>(`/admin/api/clients?${new URLSearchParams({ page: String(page), pageSize: String(pageSize) })}`),
     retry: false,
   })
   const optionsQuery = useQuery({
@@ -86,6 +94,12 @@ export default function ClientsPage() {
   const selected = (clientId ? detailQuery.data : undefined) ?? null
   const detailError = detailQuery.error ? serverError(detailQuery.error) : null
   const shownError = detailError
+  const totalPages = list ? Math.max(1, Math.ceil(list.total / pageSize)) : 1
+
+  useEffect(() => {
+    if (!listQuery.isSuccess || listQuery.isFetching || page <= totalPages) return
+    updateParams({ page: String(totalPages), pageSize: String(pageSize) }, { replace: true })
+  }, [listQuery.isSuccess, listQuery.isFetching, page, pageSize, totalPages, updateParams])
 
   // 详情落地(含保存后失效重取)同步表单;MFA step-up 草稿恢复(#26)带 clientId 匹配(consume 即弃)。
   useEffect(() => {
@@ -120,6 +134,7 @@ export default function ClientsPage() {
       })
       clearDraft("clients.form")
       queryClient.setQueryData(["clients-detail", clientId], updated)
+      await queryClient.invalidateQueries({ queryKey: ["clients"] })
       notify.success(t("白名单已更新。"))
     } catch (cause) {
       notify.failure(toUserMessage(cause))
@@ -138,6 +153,7 @@ export default function ClientsPage() {
       })
       clearDraft("clients.form")
       queryClient.setQueryData(["clients-detail", clientId], updated)
+      await queryClient.invalidateQueries({ queryKey: ["clients"] })
       notify.success(t("权限已更新。"))
     } catch (cause) {
       notify.failure(toUserMessage(cause))
@@ -152,6 +168,7 @@ export default function ClientsPage() {
       const response = await apiSend<{ clientSecret: string }>("POST", `/admin/api/clients/${selected.clientId}/rotate-secret`)
       // 一次性密钥不走 toast(3s 自动消失):常驻卡片展示,显式关闭才消失。
       setSecretNotice(response.clientSecret)
+      await queryClient.invalidateQueries({ queryKey: ["clients"] })
     } catch (cause) {
       throw toUserMessage(cause)
     }
@@ -227,6 +244,20 @@ export default function ClientsPage() {
           </Table>
         </CardContent>
       </Card>
+
+      <div className="flex items-center justify-between text-sm">
+        <span className="text-muted-foreground">{t("第 {page} / {totalPages} 页", { page, totalPages: list ? totalPages : "…" })}</span>
+        <div className="space-x-2">
+          <Button variant="outline" size="sm" disabled={page <= 1}
+            onClick={() => updateParams({ page: String(page - 1), pageSize: String(pageSize) })}>
+            {t("上一页")}
+          </Button>
+          <Button variant="outline" size="sm" disabled={!list || page >= totalPages}
+            onClick={() => updateParams({ page: String(page + 1), pageSize: String(pageSize) })}>
+            {t("下一页")}
+          </Button>
+        </div>
+      </div>
 
       {selected && (
         <>
