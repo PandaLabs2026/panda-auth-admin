@@ -38,6 +38,7 @@ import { useSession } from "@/lib/auth"
 import { clearDraft, consumeDraft, saveDraft, saveDraftWithoutPassword, withoutPassword } from "@/lib/drafts"
 import { notify } from "@/lib/notify"
 import { useI18n } from "@/lib/i18n"
+import { useOneTimeValue } from "@/hooks/use-one-time-value"
 
 /** 与 share 的 PandaAuthUser.AdminRole 对应；当前产品只有这一个角色，UI 做成开关语义。 */
 const ADMIN_ROLE = "admin"
@@ -53,6 +54,7 @@ type CreateDraft = {
 }
 
 const EMPTY_CREATE: CreateDraft = { userName: "", email: "", nickname: "", region: "", password: "", grantAdminRole: false }
+const EMPTY_CLAIM: ClaimRequest = { claimType: "panda:", claimValue: "", scope: "api" }
 
 /** 详情是否处于需要解锁的状态（存在未过期的 LockoutEnd，或失败计数未清）。 */
 function isLocked(detail: UserDetail): boolean {
@@ -101,17 +103,29 @@ export default function UsersPage() {
     [setSearchParams],
   )
 
-  const [newPassword, setNewPassword] = useState<string | null>(null)
+  const passwordNotice = useOneTimeValue(detailUserId)
+  const newPassword = passwordNotice.value
+  const passwordRef = useRef<HTMLDivElement>(null)
   const [busy, setBusy] = useState(false)
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<CreateDraft>(EMPTY_CREATE)
   const [editingProfile, setEditingProfile] = useState(false)
   const [profileDraft, setProfileDraft] = useState({ email: "", nickname: "", region: "" })
-  const [claimDraft, setClaimDraft] = useState<ClaimRequest>({ claimType: "panda:", claimValue: "", scope: "api" })
+  const [claimState, setClaimState] = useState({ ownerId: detailUserId, draft: EMPTY_CLAIM })
+  const claimDraft = claimState.ownerId === detailUserId ? claimState.draft : EMPTY_CLAIM
+  const setClaimDraft = useCallback((draft: ClaimRequest) => setClaimState({ ownerId: detailUserId, draft }), [detailUserId])
   const [claimsBusy, setClaimsBusy] = useState(false)
   const [deactivateTarget, setDeactivateTarget] = useState<UserDetail | null>(null)
   const [deactivateInput, setDeactivateInput] = useState("")
   const [copied, setCopied] = useState(false)
+  useEffect(() => {
+    setCopied(false)
+    if (newPassword) passwordRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })
+  }, [newPassword])
+  useEffect(() => {
+    const saved = consumeDraft<{ userId: string; draft: ClaimRequest }>("users.claim")
+    setClaimState({ ownerId: detailUserId, draft: saved?.userId === detailUserId ? saved.draft : EMPTY_CLAIM })
+  }, [detailUserId])
   const pageSize = 20
 
   const me = useSession().data
@@ -168,11 +182,8 @@ export default function UsersPage() {
   // 匹配,consume 即弃)——草稿只在详情数据首次/更新落地时消费一次。
   useEffect(() => {
     if (!detailQuery.data) return
-    setNewPassword(null)
     setEditingProfile(false)
     const user = detailQuery.data.user
-    const savedClaim = consumeDraft<{ userId: string; draft: ClaimRequest }>("users.claim")
-    if (savedClaim && savedClaim.userId === user.id) setClaimDraft(savedClaim.draft)
     const savedProfile = consumeDraft<{ userId: string; draft: { email: string; nickname: string; region: string } }>("users.profile")
     if (savedProfile && savedProfile.userId === user.id) {
       setProfileDraft(savedProfile.draft)
@@ -229,11 +240,12 @@ export default function UsersPage() {
       return
     }
     setClaimsBusy(true)
+    const ownerIsCurrent = passwordNotice.watchOwner()
     saveDraft("users.claim", { userId: detail.id, draft: claimDraft })
     try {
       await apiSend<UserClaim>("POST", `/admin/api/users/${detail.id}/claims`, request)
       clearDraft("users.claim")
-      setClaimDraft({ claimType: "panda:", claimValue: "", scope: "api" })
+      if (ownerIsCurrent()) setClaimDraft(EMPTY_CLAIM)
       await refreshAfterMutation(detail.id)
       notify.success(t("Claim 已添加"))
     } catch (cause) {
@@ -248,6 +260,7 @@ export default function UsersPage() {
       notify.error(t("用户名不能为空"))
       return
     }
+    const operation = passwordNotice.begin()
     setBusy(true)
     saveDraftWithoutPassword("users.create", draft)
     try {
@@ -260,9 +273,12 @@ export default function UsersPage() {
         grantAdminRole: draft.grantAdminRole,
       })
       clearDraft("users.create")
-      setCreating(false)
-      setDraft(EMPTY_CREATE)
-      if (response.password) setNewPassword(response.password)
+      if (operation.current()) {
+        setCreating(false)
+        setDraft(EMPTY_CREATE)
+        if (response.password) operation.reveal(response.password, response.id)
+        updateParams({ user: response.id })
+      }
       await refreshAfterMutation()
       notify.success(t("账号已创建"))
     } catch (cause) {
@@ -310,10 +326,12 @@ export default function UsersPage() {
 
   async function copyNewPassword() {
     if (!newPassword) return
+    const valueIsCurrent = passwordNotice.watchValue()
     try {
       await navigator.clipboard.writeText(newPassword)
+      if (!valueIsCurrent()) return
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      setTimeout(() => { if (valueIsCurrent()) setCopied(false) }, 2000)
     } catch {
       // 剪贴板不可用（非安全上下文等）：静默，密码文本仍可手动选中复制。
     }
@@ -332,9 +350,11 @@ export default function UsersPage() {
   }
 
   async function confirmResetPassword(user: UserSummary) {
+    const operation = passwordNotice.begin()
     try {
-      const response = await apiSend<{ password: string }>("POST", `/admin/api/users/${user.id}/reset-password`, {})
-      setNewPassword(response.password)
+      const response = await apiSend<{ password: string }>("POST", `/admin/api/users/${encodeURIComponent(user.id)}/reset-password`, {})
+      if (operation.reveal(response.password, user.id)) updateParams({ user: user.id })
+      await refreshAfterMutation(user.id)
     } catch (cause) {
       throw toUserMessage(cause)
     }
@@ -411,7 +431,7 @@ export default function UsersPage() {
         ]}
         right={
           <div className="flex items-center gap-3">
-            {result && <span className="text-sm text-muted-foreground">{t("共 {} 个账号", { total: result.total })}</span>}
+            {result && <span className="text-sm text-muted-foreground">{t("共 {total} 个账号", { total: result.total })}</span>}
             <Button onClick={() => setCreating((value) => !value)} variant={creating ? "outline" : "default"}>
               {creating ? t("收起建号表单") : t("新建用户")}
             </Button>
@@ -603,7 +623,7 @@ export default function UsersPage() {
 
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">
-          {t("第 {} / {} 页", { page, totalPages })}
+          {t("第 {page} / {totalPages} 页", { page, totalPages })}
         </span>
         <div className="space-x-2">
           <Button
@@ -626,10 +646,7 @@ export default function UsersPage() {
       </div>
 
       {newPassword && (
-        <div ref={(node) => {
-          // 出现即滚动到视口中央(#25):一次性密码不可再取,不能让用户翻找。
-          if (node && newPassword) node.scrollIntoView({ behavior: "smooth", block: "center" })
-        }}>
+        <div ref={passwordRef}>
           <Card className="border-warning/40 bg-warning/10">
             <CardHeader>
               <CardTitle className="text-sm text-warning">{t("新密码（仅显示这一次）")}</CardTitle>
@@ -640,6 +657,7 @@ export default function UsersPage() {
               <Button variant="outline" size="sm" onClick={() => void copyNewPassword()}>
                 {copied ? t("已复制") : t("复制")}
               </Button>
+              <Button variant="ghost" size="sm" aria-label={t("关闭一次性密码")} onClick={passwordNotice.clear}>{t("关闭")}</Button>
             </CardContent>
           </Card>
         </div>

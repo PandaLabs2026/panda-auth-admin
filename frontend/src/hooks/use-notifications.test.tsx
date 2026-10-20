@@ -42,6 +42,32 @@ afterEach(() => {
 })
 
 describe('useNotifications', () => {
+  test('exposes list failure and explicitly retries without treating it as empty success', async () => {
+    let failed = true
+    const normal = stub(0)
+    vi.stubGlobal('fetch', vi.fn((path: string) => path.startsWith('/admin/api/notifications?') && failed
+      ? Promise.resolve(json({ title: 'fixture-list-failure' }, 500)) : normal(path)))
+    const { result } = renderHook(() => useNotifications(), { wrapper: wrap() })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.error).toBe('fixture-list-failure')
+    failed = false
+    act(() => result.current.retry())
+    await waitFor(() => expect(result.current.items).toHaveLength(3))
+    expect(result.current.error).toBeNull()
+  })
+
+  test('keeps unread state and exposes a failed mark-all request', async () => {
+    const normal = stub(0)
+    vi.stubGlobal('fetch', vi.fn((path: string, init?: RequestInit) => init?.method === 'POST' && path.endsWith('/cursor')
+      ? Promise.resolve(json({ title: 'fixture-mark-failure' }, 500)) : normal(path)))
+    const { result } = renderHook(() => useNotifications(), { wrapper: wrap() })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    act(() => result.current.markAllRead())
+    await waitFor(() => expect(result.current.markError).toBe('fixture-mark-failure'))
+    expect(result.current.unread).toBe(3)
+    expect(result.current.marking).toBe(false)
+  })
+
   test('拉取审计派生列表,未读 = Id 大于游标的条数,标题走动作映射', async () => {
     const fetchMock = stub(1)
     vi.stubGlobal('fetch', fetchMock)

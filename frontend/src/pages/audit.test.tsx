@@ -1,6 +1,6 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { useSearchParams } from "react-router"
+import { useNavigate, useSearchParams } from "react-router"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import AuditPage from "./audit"
@@ -12,13 +12,52 @@ function json(body: unknown): Response {
 
 function SearchParamsProbe() {
   const [params] = useSearchParams()
-  return <output data-testid="search-params">{params.toString()}</output>
+  const navigate = useNavigate()
+  return <><output data-testid="search-params">{params.toString()}</output><button onClick={() => navigate(-1)}>history-back</button></>
 }
 
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  vi.clearAllTimers()
+  vi.useRealTimers()
+})
+
+describe("AuditPage debounced text", () => {
+  it("commits a text burst once after 300ms", async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn(() => Promise.resolve(json({ items: [], total: 0, page: 1, pageSize: 20 })))
+    vi.stubGlobal("fetch", fetchMock)
+    render(<Providers><AuditPage /><SearchParamsProbe /></Providers>)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    for (const value of ["a", "al", "ali", "alic", "alice"]) fireEvent.change(screen.getByLabelText("用户"), { target: { value } })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(299) })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(screen.getByTestId("search-params").textContent).toContain("userName=alice")
+  })
+
+  it("cancels pending text on history navigation while date and page controls are immediate", async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn(() => Promise.resolve(json({ items: [], total: 60, page: 1, pageSize: 20 })))
+    vi.stubGlobal("fetch", fetchMock)
+    render(<Providers initialEntries={["/audit?userName=previous", "/audit?userName=current"]}><AuditPage /><SearchParamsProbe /></Providers>)
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    fireEvent.change(screen.getByLabelText("用户"), { target: { value: "current-pending" } })
+    fireEvent.click(screen.getByRole("button", { name: "history-back" }))
+    await act(async () => { await vi.advanceTimersByTimeAsync(300) })
+    expect(screen.getByLabelText("用户")).toHaveValue("previous")
+    expect(screen.getByTestId("search-params").textContent).not.toContain("pending")
+    fireEvent.change(screen.getByLabelText("起（本地时区）"), { target: { value: "2026-10-01T09:30" } })
+    await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+    expect(screen.getByTestId("search-params").textContent).toContain("from=")
+    fireEvent.click(screen.getByRole("button", { name: "下一页" }))
+    expect(new URLSearchParams(screen.getByTestId("search-params").textContent ?? "").get("page")).toBe("2")
+  })
 })
 
 describe("AuditPage URL filters and states", () => {

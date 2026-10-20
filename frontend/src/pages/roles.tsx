@@ -149,7 +149,7 @@ export default function RolesPage() {
     <div className="space-y-6">
       <FilterToolbar
         searchPlaceholder={t("搜索角色")}
-        right={result && <span className="text-sm text-muted-foreground">{t("共 {} 个角色", { total: result.total })}</span>}
+        right={result && <span className="text-sm text-muted-foreground">{t("共 {total} 个角色", { total: result.total })}</span>}
       />
 
       {error && <p role="alert" className="text-destructive">{error}</p>}
@@ -179,7 +179,7 @@ export default function RolesPage() {
       </Card>
 
       <div className="flex items-center justify-between text-sm">
-        <span className="text-muted-foreground">{t("第 {} / {} 页", { page, totalPages })}</span>
+        <span className="text-muted-foreground">{t("第 {page} / {totalPages} 页", { page, totalPages })}</span>
         <div className="space-x-2">
           <Button
             variant="outline"
