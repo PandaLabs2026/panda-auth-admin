@@ -1,5 +1,5 @@
-import { useCallback } from "react"
-import { useSearchParams } from "react-router"
+import { useCallback, useEffect, useRef, useState } from "react"
+import { useLocation, useNavigationType, useSearchParams } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 
 import SemanticBadge from "@/components/semantic-badge"
@@ -14,6 +14,26 @@ import { Separator } from "@/components/ui/separator"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { serverError, apiGet, AUDIT_ACTION, type AdminAuditEntry, type LoginLogEntry, type PageResult } from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
+
+function useDebouncedFilter(value: string, key: string, update: (patch: Record<string, string | null>, options?: { replace?: boolean }) => void) {
+  const [draft, setDraft] = useState(value)
+  const location = useLocation()
+  const navigation = useNavigationType()
+  const previous = useRef({ value, locationKey: location.key })
+  useEffect(() => {
+    const changed = previous.current.value !== value
+    const popped = previous.current.locationKey !== location.key && navigation === "POP"
+    previous.current = { value, locationKey: location.key }
+    if (changed || popped) {
+      setDraft(value)
+      return
+    }
+    if (draft === value) return
+    const timer = setTimeout(() => update({ [key]: draft, page: null }, { replace: true }), 300)
+    return () => clearTimeout(timer)
+  }, [value, draft, key, update, location.key, navigation])
+  return [draft, setDraft] as const
+}
 
 /**
  * 审计查询（0.3）：登录日志与管理操作日志双视图，只读 + 过滤 + 分页。
@@ -50,6 +70,10 @@ export default function AuditPage() {
     },
     [setSearchParams],
   )
+
+  const [userDraft, setUserDraft] = useDebouncedFilter(userName, "userName", updateParams)
+  const [actorDraft, setActorDraft] = useDebouncedFilter(actor, "actor", updateParams)
+  const [actionDraft, setActionDraft] = useDebouncedFilter(action, "action", updateParams)
 
   // 读侧经 useQuery(P3 迁移):query 键=URL 状态全集,URL 变即重取;Query 的键语义
   // 天然取代旧 loadSeq 乱序守卫(每次键变化都是新查询,慢的旧响应只写进旧键的缓存)。
@@ -116,8 +140,8 @@ export default function AuditPage() {
               <Input
                 id="audit-user"
                 className="w-44"
-                value={userName}
-                onChange={(event) => updateParams({ userName: event.target.value, page: null }, { replace: true })}
+                value={userDraft}
+                onChange={(event) => setUserDraft(event.target.value)}
                 placeholder={t("用户名")}
               />
             </div>
@@ -145,8 +169,8 @@ export default function AuditPage() {
               <Input
                 id="audit-actor"
                 className="w-44"
-                value={actor}
-                onChange={(event) => updateParams({ actor: event.target.value, page: null }, { replace: true })}
+                value={actorDraft}
+                onChange={(event) => setActorDraft(event.target.value)}
                 placeholder={t("操作者用户名")}
               />
             </div>
@@ -155,14 +179,14 @@ export default function AuditPage() {
               <Input
                 id="audit-action"
                 className="w-44"
-                value={action}
-                onChange={(event) => updateParams({ action: event.target.value, page: null }, { replace: true })}
+                value={actionDraft}
+                onChange={(event) => setActionDraft(event.target.value)}
                 placeholder="user.freeze"
               />
             </div>
           </>
         )}
-        {result && <span className="pb-2 text-sm text-muted-foreground">{t("共 {} 条", { total: result.total })}</span>}
+        {result && <span className="pb-2 text-sm text-muted-foreground">{t("共 {total} 条", { total: result.total })}</span>}
       </div>
 
       <Separator />
@@ -268,7 +292,7 @@ export default function AuditPage() {
 
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">
-          {t("第 {} / {} 页", { page, totalPages })}
+          {t("第 {page} / {totalPages} 页", { page, totalPages })}
         </span>
         <div className="space-x-2">
           <Button

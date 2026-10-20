@@ -13,6 +13,7 @@ import { serverError, apiGet, apiSend, type ClientDetail, type ClientOptions, ty
 import { clearDraft, consumeDraft, saveDraft } from "@/lib/drafts"
 import { notify } from "@/lib/notify"
 import { useI18n } from "@/lib/i18n"
+import { useOneTimeValue } from "@/hooks/use-one-time-value"
 
 /** 白名单与权限勾选的草稿形态(#26):按 clientId 匹配恢复。 */
 type ClientDraft = {
@@ -66,7 +67,8 @@ export default function ClientsPage() {
   const [redirectUris, setRedirectUris] = useState("")
   const [postLogoutUris, setPostLogoutUris] = useState("")
   const [permissions, setPermissions] = useState<Set<string>>(new Set())
-  const [secretNotice, setSecretNotice] = useState<string | null>(null)
+  const secret = useOneTimeValue(clientId)
+  const secretNotice = secret.value
   const [busy, setBusy] = useState(false)
 
   // 读侧经 useQuery(P3 迁移):目录/选项常驻,详情键=[clientId](键语义取代乱序守卫——
@@ -128,7 +130,7 @@ export default function ClientsPage() {
     setBusy(true)
     saveDraft("clients.form", { clientId: selected.clientId, draft: { redirectUris, postLogoutUris, permissions: [...permissions] } })
     try {
-      const updated = await apiSend<ClientDetail>("PUT", `/admin/api/clients/${selected.clientId}/redirect-uris`, {
+      const updated = await apiSend<ClientDetail>("PUT", `/admin/api/clients/${encodeURIComponent(selected.clientId)}/redirect-uris`, {
         redirectUris: splitUris(redirectUris),
         postLogoutRedirectUris: splitUris(postLogoutUris),
       })
@@ -148,7 +150,7 @@ export default function ClientsPage() {
     setBusy(true)
     saveDraft("clients.form", { clientId: selected.clientId, draft: { redirectUris, postLogoutUris, permissions: [...permissions] } })
     try {
-      const updated = await apiSend<ClientDetail>("PUT", `/admin/api/clients/${selected.clientId}/permissions`, {
+      const updated = await apiSend<ClientDetail>("PUT", `/admin/api/clients/${encodeURIComponent(selected.clientId)}/permissions`, {
         permissions: [...permissions],
       })
       clearDraft("clients.form")
@@ -164,10 +166,11 @@ export default function ClientsPage() {
 
   async function rotateSecret() {
     if (!selected) return
+    const operation = secret.begin()
     try {
-      const response = await apiSend<{ clientSecret: string }>("POST", `/admin/api/clients/${selected.clientId}/rotate-secret`)
+      const response = await apiSend<{ clientSecret: string }>("POST", `/admin/api/clients/${encodeURIComponent(selected.clientId)}/rotate-secret`)
       // 一次性密钥不走 toast(3s 自动消失):常驻卡片展示,显式关闭才消失。
-      setSecretNotice(response.clientSecret)
+      operation.reveal(response.clientSecret)
       await queryClient.invalidateQueries({ queryKey: ["clients"] })
     } catch (cause) {
       throw toUserMessage(cause)
@@ -191,7 +194,7 @@ export default function ClientsPage() {
         <div role="status" className="flex flex-wrap items-center gap-3 rounded-md border border-warning/40 bg-warning/10 px-3 py-2 text-sm">
           <span className="text-warning">{t("新密钥（仅显示一次）：")}</span>
           <code className="rounded bg-card px-2 py-1 font-mono text-base dark:bg-muted">{secretNotice}</code>
-          <Button variant="ghost" size="sm" className="ml-auto h-7" onClick={() => setSecretNotice(null)}>
+          <Button variant="ghost" size="sm" className="ml-auto h-7" onClick={secret.clear}>
             {t("关闭")}
           </Button>
         </div>

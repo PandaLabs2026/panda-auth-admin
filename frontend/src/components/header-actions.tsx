@@ -1,5 +1,5 @@
 import { KeyRoundIcon, LanguagesIcon, ExternalLinkIcon } from "lucide-react"
-import NotificationBell from "@/components/patterns/NotificationBell"
+import NotificationBell from "@/components/app-notification-bell"
 import { Button } from "@/components/ui/button"
 import { useSession } from "@/lib/auth"
 import { useI18n } from "@/lib/i18n"

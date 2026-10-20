@@ -225,5 +225,17 @@
   "role.add_claim": "Role claim added",
   "role.remove_claim": "Role claim removed",
   "密钥已轮换": "Secret rotated",
-  "重试": "Retry"
+  "重试": "Retry",
+  "500 · 服务暂不可用": "500 · Service unavailable",
+  "服务遇到意外错误，请稍后重试；持续异常请查看状态页或联系运维。": "An unexpected error occurred. Try again later; if it persists, check the status page or contact support.",
+  "重新加载": "Reload",
+  "返回首页": "Back to home",
+  "时间未知": "Unknown time",
+  "通知（最近 50 条中 {unread} 条未读）": "Notifications ({unread} unread in the latest 50)",
+  "最近 50 条通知": "Latest 50 notifications",
+  "正在标记已读": "Marking as read",
+  "全部已读": "Mark all as read",
+  "正在加载通知": "Loading notifications",
+  "暂无通知": "No notifications",
+  "关闭一次性密码": "Dismiss one-time password"
 }
