@@ -34,8 +34,8 @@ COPY panda-auth-share/ panda-auth-share/
 RUN dotnet publish panda-auth-admin/src/PandaAuth.Admin -c Release -o /app --no-restore --nologo
 
 # ================= 运行阶段 =================
-# 基础镜像 digest 钉值，原 tag：mcr.microsoft.com/dotnet/aspnet:10.0（2026-10-06 解析）
-FROM mcr.microsoft.com/dotnet/aspnet@sha256:0fa044f682cb7d93a5a90401a00c626c66f7b00b86922be9441f869eae039f80 AS runtime
+# .NET/ASP.NET 安全补丁 10.0.13；与 Server 共用不可变运行时基线（2026-10-22 核验）。
+FROM mcr.microsoft.com/dotnet/aspnet:10.0.13@sha256:d5633778c754e89a386882eddf8dbee6942447a8a4b8267c19cf1e1158d0b0ac AS runtime
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
