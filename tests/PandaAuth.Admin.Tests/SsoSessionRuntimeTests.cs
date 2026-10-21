@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Protocols;
 using OpenIddict.Abstractions;
@@ -20,14 +21,16 @@ namespace PandaAuth.Admin.Tests;
 public sealed class SsoSessionRuntimeTests
 {
     [Theory]
-    [InlineData("admin")]
+    [InlineData("admin", true)]
+    [InlineData("admin", false)]
 
-    public async Task SharedLogout_RevokesLinkedSession_ButPreservesAnotherDevice(string? role)
+    public async Task SharedLogout_RevokesLinkedSession_ButPreservesAnotherDevice(string? role, bool sharedLogoutEnabled)
     {
         var state = new CentralState();
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Development");
+            builder.UseSetting("Auth:SessionState:SharedLogoutEnabled", sharedLogoutEnabled.ToString());
             builder.UseSetting("Auth:ClientSecret", "fixture-client-secret");
             builder.UseSetting("Auth:SessionState:ClientSecret", "fixture-session-secret");
             builder.UseSetting("Auth:Issuer", "https://idp.example.invalid/");
@@ -49,6 +52,7 @@ public sealed class SsoSessionRuntimeTests
         });
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false, HandleCookies = false });
+        Assert.Equal(sharedLogoutEnabled, factory.Services.GetRequiredService<IConfiguration>().GetValue<bool>(PandaAuthSessionApi.SharedLogoutEnabled));
         var options = factory.Services.GetRequiredService<IOptionsMonitor<CookieAuthenticationOptions>>().Get("Cookies");
         string Cookie(string sid, bool linked = true)
         {
@@ -78,6 +82,8 @@ public sealed class SsoSessionRuntimeTests
         var payload = await antiforgery.Content.ReadFromJsonAsync<JsonElement>();
         var csrfCookie = antiforgery.Headers.GetValues("Set-Cookie").Single(c => c.Contains("Antiforgery")).Split(';')[0];
         UseCookie(cookieA + "; " + csrfCookie);
+        if (sharedLogoutEnabled)
+        {
         state.RevokeUnavailable = true;
         using (var failedRequest = new HttpRequestMessage(HttpMethod.Post, "/admin/api/logout"))
         {
@@ -89,14 +95,18 @@ public sealed class SsoSessionRuntimeTests
             Assert.Equal(HttpStatusCode.OK, retryable.StatusCode);
         Assert.DoesNotContain(sidA, state.Revoked);
         state.RevokeUnavailable = false;
+        }
         using var request = new HttpRequestMessage(HttpMethod.Post, "/admin/api/logout");
         request.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
         using var logout = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
-        Assert.Contains(sidA, state.Revoked);
+        Assert.Equal(sharedLogoutEnabled, state.Revoked.Contains(sidA));
         UseCookie(cookieA);
         using var revoked = await client.GetAsync("/admin/api/session");
         Assert.Equal(HttpStatusCode.Unauthorized, revoked.StatusCode);
+        UseCookie(Cookie(sidA));
+        using var linked = await client.GetAsync("/admin/api/session");
+        Assert.Equal(sharedLogoutEnabled ? HttpStatusCode.Unauthorized : HttpStatusCode.OK, linked.StatusCode);
         UseCookie(Cookie(sidB));
         using var otherDevice = await client.GetAsync("/admin/api/session");
         Assert.Equal(HttpStatusCode.OK, otherDevice.StatusCode);

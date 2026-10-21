@@ -568,7 +568,8 @@ app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient rev
         {
             try
             {
-                await sessionStateClient.RevokeLoginAsync(context.User.FindFirstValue(PandaAuthClaims.SsoSessionId)!, context.RequestAborted);
+                if (context.RequestServices.GetRequiredService<IConfiguration>().GetValue<bool>(PandaAuthSessionApi.SharedLogoutEnabled))
+                    await sessionStateClient.RevokeLoginAsync(context.User.FindFirstValue(PandaAuthClaims.SsoSessionId)!, context.RequestAborted);
                 await sessionStateClient.RevokeAsync(sessionId, context.RequestAborted);
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
