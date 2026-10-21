@@ -37,6 +37,8 @@ public sealed class SsoSessionRuntimeTests
             builder.ConfigureServices(services =>
             {
                 services.AddHttpClient("session-state").ConfigurePrimaryHttpMessageHandler(() => new CentralHandler(state));
+                services.AddHttpClient<AdminApiProxy>().ConfigurePrimaryHttpMessageHandler(() => new CentralHandler(state));
+                services.AddHttpClient<TokenRevocationClient>().ConfigurePrimaryHttpMessageHandler(() => new CentralHandler(state));
                 services.PostConfigure<OpenIddictClientOptions>(options =>
                 {
                     var configuration = new OpenIddictConfiguration
@@ -64,8 +66,9 @@ public sealed class SsoSessionRuntimeTests
             };
             if (role is not null) claims.Add(new Claim("role", role));
             if (linked) claims.Add(new Claim(PandaAuthClaims.SsoSessionId, sid));
-            var ticket = new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, "Cookies", "name", "role")),
-                new AuthenticationProperties { IssuedUtc = DateTimeOffset.UtcNow, ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1) }, "Cookies");
+            var properties = new AuthenticationProperties { IssuedUtc = DateTimeOffset.UtcNow, ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1) };
+            properties.StoreTokens([new AuthenticationToken { Name = SessionTokens.AccessTokenName, Value = "fixture-access" }]);
+            var ticket = new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, "Cookies", "name", "role")), properties, "Cookies");
             return options.Cookie.Name + "=" + options.TicketDataFormat.Protect(ticket);
         }
         void UseCookie(string cookie)
@@ -136,6 +139,8 @@ public sealed class SsoSessionRuntimeTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var path = request.RequestUri!.AbsolutePath;
+            if (path == PandaAuthEndpoints.Userinfo) return Json("{}");
+            if (path == PandaAuthEndpoints.Revocation) return new(HttpStatusCode.NoContent);
             if (path == "/connect/token") return Json("{\"access_token\":\"fixture-token\",\"expires_in\":300}");
             if (state.Unavailable || (state.RevokeUnavailable && path == PandaAuthSessionApi.SsoRevoke)) return new(HttpStatusCode.ServiceUnavailable);
             var body = await request.Content!.ReadFromJsonAsync<JsonElement>(cancellationToken);

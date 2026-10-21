@@ -5,6 +5,7 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using PandaAuth.Shared;
 using static OpenIddict.Abstractions.OpenIddictConstants;
 
 namespace PandaAuth.Admin;
@@ -30,6 +31,20 @@ public sealed class AdminApiProxy(
     IHttpContextAccessor httpContextAccessor,
     ILogger<AdminApiProxy> logger)
 {
+    /// <summary>Validate the underlying IDP credentials before exposing a local session profile.</summary>
+    public async Task<IResult?> ValidateSessionAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await ForwardAsync(PandaAuthEndpoints.Userinfo, HttpMethod.Get, cancellationToken: cancellationToken);
+        if (result is IStatusCodeHttpResult { StatusCode: StatusCodes.Status200OK }) return null;
+        if (result is IStatusCodeHttpResult { StatusCode: StatusCodes.Status401Unauthorized })
+        {
+            var context = httpContextAccessor.HttpContext
+                ?? throw new InvalidOperationException("AdminApiProxy 只能在请求上下文内使用。");
+            await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        }
+        return result;
+    }
+
 
     /// <summary>
     /// 按 subject 的刷新单飞闸门：串行信号量 + 最近一次成功刷新的输出。
@@ -289,10 +304,8 @@ public sealed class AdminApiProxy(
         // 403 语义二分：上游 MFA 门禁（server 侧 Forbid）与真正的权限拒绝在状态码上不可分，
         // 前端把任意 403 当 step-up 会把权限拒绝误导向 /account/mfa。以响应体判定，命中才附加
         // X-Panda-Mfa-Required: true 供前端精确跳转；带明确 JSON 错误描述的 403 走普通错误展示。
-        // 空体 403 属过渡期兼容：server 仓现有 15 处 MFA/WebAuthn 门禁全部是裸 Forbid()（空体、
-        // 无任何标记），若不按 step-up 处理，管理员做门禁操作只能看到裸 HTTP 403、无法从 UI
-        // 进入 step-up——合并即回归。server 侧补上 mfaRequired 标记（ProblemDetails 扩展）后
-        // 可删掉该过渡分支（配套测试会提示两处需同步）。
+        // 当前 Server 明确返回 mfaRequired；仍保留空体 403 的兼容分支，避免依赖升级同步。
+        // 旧式裸 Forbid() 也可能被默认 Cookie 方案转换为 302，本分支不能修正这种重定向。
         var mfaRequired = response.StatusCode == HttpStatusCode.Forbidden && IsMfaGate(body);
         return new UpstreamResult((int)response.StatusCode, contentType, body, mfaRequired);
     }
@@ -336,8 +349,10 @@ public sealed class AdminApiProxy(
     }
 
     /// <summary>上游透传结果：除可选的 MFA 标记响应头外不改动任何内容（Results.Content 不支持自定义头）。</summary>
-    private sealed class UpstreamResult(int statusCode, string contentType, string body, bool mfaRequired) : IResult
+    private sealed class UpstreamResult(int statusCode, string contentType, string body, bool mfaRequired) : IResult, IStatusCodeHttpResult
     {
+        public int? StatusCode => statusCode;
+
         public async Task ExecuteAsync(HttpContext httpContext)
         {
             httpContext.Response.StatusCode = statusCode;

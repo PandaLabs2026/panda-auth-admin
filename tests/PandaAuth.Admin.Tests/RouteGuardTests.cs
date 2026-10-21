@@ -285,18 +285,15 @@ public class RouteGuardTests
     }
 
     [Fact]
-    public async Task Authenticated_SessionEndpoint_ReturnsIdentityWithRoles()
+    public async Task AuthenticatedIdentityWithoutIdpTokens_SessionEndpointRejects()
     {
         using var factory = new GuardFactory(authenticated: true);
         using var client = factory.CreateClient();
 
         using var response = await client.GetAsync("/admin/api/session");
 
-        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var payload = await response.Content.ReadFromJsonAsync<SessionResponse>();
-        Assert.NotNull(payload);
-        Assert.Equal("stub-admin", payload.Subject);
-        Assert.Contains("admin", payload.Roles);
+        // The identity-only guard fixture intentionally has no IDP credentials.
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
     [Fact]
