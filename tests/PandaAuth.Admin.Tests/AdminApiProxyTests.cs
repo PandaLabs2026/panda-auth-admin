@@ -88,6 +88,8 @@ public class AdminApiProxyTests
 
     private sealed class StubSessionState : IAdminSessionState
     {
+        public Task<bool> IsLoginRevokedAsync(string sessionId, CancellationToken cancellationToken) => Task.FromResult(false);
+        public Task RevokeLoginAsync(string sessionId, CancellationToken cancellationToken) => Task.CompletedTask;
         public Task<bool> IsRevokedAsync(string sessionId, CancellationToken cancellationToken) => Task.FromResult(false);
         public Task RevokeAsync(string sessionId, CancellationToken cancellationToken) => Task.CompletedTask;
     }

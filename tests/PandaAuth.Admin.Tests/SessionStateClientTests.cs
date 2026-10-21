@@ -41,6 +41,22 @@ public class SessionStateClientTests
         await Assert.ThrowsAsync<HttpRequestException>(() => client.IsRevokedAsync("sid-1", default));
     }
 
+    [Fact]
+    public async Task LocalTimeoutAndExplicitSharedLogout_UseSeparateRevocationBoundaries()
+    {
+        var paths = new List<string>();
+        var client = Create(new StubHandler(request =>
+        {
+            var path = request.RequestUri!.AbsolutePath;
+            paths.Add(path);
+            return Task.FromResult(path == "/connect/token" ? Json("{\"access_token\":\"fixture\",\"expires_in\":300}") : Json("{}"));
+        }));
+        const string sid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        await client.RevokeAsync(sid, default);
+        Assert.DoesNotContain(PandaAuth.Shared.PandaAuthSessionApi.SsoRevoke, paths);
+        await client.RevokeLoginAsync(sid, default);
+        Assert.Contains(PandaAuth.Shared.PandaAuthSessionApi.SsoRevoke, paths);
+    }
     private static SessionStateClient Create(HttpMessageHandler handler)
     {
         var http = new HttpClient(handler) { BaseAddress = new Uri("http://server/") };
