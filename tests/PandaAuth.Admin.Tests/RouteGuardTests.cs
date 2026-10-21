@@ -121,6 +121,8 @@ public class RouteGuardTests
 
         private sealed class AllowSessionState : IAdminSessionState
         {
+            public Task<bool> IsLoginRevokedAsync(string sessionId, CancellationToken cancellationToken) => Task.FromResult(false);
+            public Task RevokeLoginAsync(string sessionId, CancellationToken cancellationToken) => Task.CompletedTask;
             public Task<bool> IsRevokedAsync(string sessionId, CancellationToken cancellationToken) => Task.FromResult(false);
             public Task RevokeAsync(string sessionId, CancellationToken cancellationToken) => Task.CompletedTask;
         }
@@ -132,7 +134,8 @@ public class RouteGuardTests
             [
                 new Claim(Claims.Subject, "spy-admin"),
                 new Claim(Claims.Role, PandaAuthRoles.Admin),
-                new Claim(AdminSessionLifecycle.SessionIdClaimType, "spy-admin-session"),
+                new Claim(AdminSessionLifecycle.SessionIdClaimType, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+                new Claim(PandaAuthClaims.SsoSessionId, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
                 new Claim(AdminSessionLifecycle.StartedAtClaimType, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)),
             ], CookieAuthenticationDefaults.AuthenticationScheme, Claims.Name, Claims.Role);
             var properties = new AuthenticationProperties();

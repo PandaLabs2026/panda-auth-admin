@@ -66,6 +66,12 @@ builder.Services
         options.SlidingExpiration = true;
         options.Events.OnValidatePrincipal = async context =>
         {
+            var linkedSid = context.Principal?.FindFirstValue(PandaAuthClaims.SsoSessionId);
+            if (!Guid.TryParseExact(linkedSid, "N", out _))
+            {
+                context.RejectPrincipal();
+                return;
+            }
             var lifecycle = context.HttpContext.RequestServices.GetRequiredService<AdminSessionLifecycle>();
             var identity = context.Principal?.Identity as ClaimsIdentity;
             if (identity is not null)
@@ -103,7 +109,8 @@ builder.Services
             }
             else if (lifecycle.IsRevoked(context.Principal, context.Properties)
                 || (AdminSessionLifecycle.TryGetSessionId(context.Principal, out var sid)
-                    && await remote.IsRevokedAsync(sid, context.HttpContext.RequestAborted)))
+                    && await remote.IsRevokedAsync(sid, context.HttpContext.RequestAborted))
+                || await remote.IsLoginRevokedAsync(linkedSid!, context.HttpContext.RequestAborted))
             {
                 context.RejectPrincipal();
             }
@@ -310,6 +317,7 @@ builder.Services.AddAuthorization(options =>
 {
     options.FallbackPolicy = new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
+        .RequireClaim(Claims.Role, PandaAuthRoles.Admin)
         .Build();
 });
 builder.Services.AddHealthChecks();
@@ -470,6 +478,8 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
         "回调诊断：AT={HasAt} RT={HasRt}",
         resultProperties.GetTokenValue("backchannel_access_token") is not null,
         resultProperties.GetTokenValue(SessionTokens.RefreshTokenName) is not null);
+    var linkedSid = identity.FindFirst(PandaAuthClaims.SsoSessionId)?.Value;
+    if (!Guid.TryParseExact(linkedSid, "N", out _)) return Results.StatusCode(403);
     identity.AddClaim(new Claim(AdminSessionLifecycle.SessionIdClaimType, AdminSessionLifecycle.NewSessionId()));
     var properties = new AuthenticationProperties();
     identity.AddClaim(new Claim(AdminSessionLifecycle.StartedAtClaimType, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)));
@@ -511,6 +521,7 @@ app.MapGet("/admin/api/session", (HttpContext context) =>
         return Results.Unauthorized();
     }
 
+    if (!context.User.HasClaim(Claims.Role, PandaAuthRoles.Admin)) return Results.StatusCode(403);
     return Results.Ok(new
     {
         subject = context.User.FindFirst(Claims.Subject)?.Value ?? string.Empty,
@@ -552,16 +563,21 @@ app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient rev
         // 先取令牌再登出：Cookie 清除后票据内的令牌不可恢复。
         var session = await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         var (accessToken, refreshToken) = SessionTokens.Read(session);
-        sessionLifecycle.Revoke(session.Principal ?? context.User, session.Properties);
+
         if (AdminSessionLifecycle.TryGetSessionId(session.Principal ?? context.User, out var sessionId))
         {
-            try { await sessionStateClient.RevokeAsync(sessionId, context.RequestAborted); }
+            try
+            {
+                await sessionStateClient.RevokeLoginAsync(context.User.FindFirstValue(PandaAuthClaims.SsoSessionId)!, context.RequestAborted);
+                await sessionStateClient.RevokeAsync(sessionId, context.RequestAborted);
+            }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
             {
                 return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "会话撤销服务不可用");
             }
         }
 
+        sessionLifecycle.Revoke(session.Principal ?? context.User, session.Properties);
         await revocationClient.RevokeAsync(
             accessToken,
             refreshToken,
