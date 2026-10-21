@@ -514,7 +514,7 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
 // 会话查询（SPA 用）：未登录 401（前端引导全页跳 /admin/login），已登录回显身份与角色。
 // 匿名豁免 + 手动 401 是刻意的：走 FallbackPolicy 会得到 302（Cookie LoginPath），
 // 前端拿到的是登录页 HTML 而不是 401，无法据此判定「未登录」。
-app.MapGet("/admin/api/session", (HttpContext context) =>
+app.MapGet("/admin/api/session", async (HttpContext context, AdminApiProxy proxy) =>
 {
     if (context.User.Identity?.IsAuthenticated != true)
     {
@@ -522,6 +522,7 @@ app.MapGet("/admin/api/session", (HttpContext context) =>
     }
 
     if (!context.User.HasClaim(Claims.Role, PandaAuthRoles.Admin)) return Results.StatusCode(403);
+    if (await proxy.ValidateSessionAsync(context.RequestAborted) is { } failure) return failure;
     return Results.Ok(new
     {
         subject = context.User.FindFirst(Claims.Subject)?.Value ?? string.Empty,

@@ -23,8 +23,8 @@ public sealed class PermissionMatrixRuntimeTests
     [InlineData("user", "/admin/api/session", HttpStatusCode.Forbidden)]
     [InlineData("", "/admin/api/users", HttpStatusCode.Forbidden)]
     [InlineData("user", "/admin/api/users", HttpStatusCode.Forbidden)]
-    [InlineData("admin", "/admin/api/session", HttpStatusCode.OK)]
-    public async Task AdminRoutes_EnforceRolesBeyondTheLoginCallback(string? role, string path, HttpStatusCode expected)
+    [InlineData("admin", "/admin/api/session", HttpStatusCode.Unauthorized)]
+    public async Task AdminRoutes_EnforceRolesAndRequireIdpCredentials(string? role, string path, HttpStatusCode expected)
     {
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
