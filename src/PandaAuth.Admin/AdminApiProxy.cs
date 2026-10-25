@@ -266,6 +266,8 @@ public sealed class AdminApiProxy(
                 IsPersistent = session.Properties?.IsPersistent ?? false,
                 ExpiresUtc = session.Properties?.ExpiresUtc,
             };
+            if (session.Properties?.Items.TryGetValue(SessionTokens.AdminResourceProperty, out var resource) == true)
+                properties.Items[SessionTokens.AdminResourceProperty] = resource;
             var tokens = new List<AuthenticationToken>();
             if (result.AccessToken is { } accessToken)
             {
