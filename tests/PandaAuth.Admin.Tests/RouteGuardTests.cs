@@ -128,7 +128,7 @@ public class RouteGuardTests
         }
 
         /// <summary>直签带 access_token 的会话票据 Cookie 值（代理见到 AT 才会真正发上游请求）。</summary>
-        public string MintSessionCookie()
+        public string MintSessionCookie(bool administrationResource = true)
         {
             var identity = new ClaimsIdentity(
             [
@@ -139,6 +139,7 @@ public class RouteGuardTests
                 new Claim(AdminSessionLifecycle.StartedAtClaimType, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)),
             ], CookieAuthenticationDefaults.AuthenticationScheme, Claims.Name, Claims.Role);
             var properties = new AuthenticationProperties();
+            if (administrationResource) properties.Items[SessionTokens.AdminResourceProperty] = PandaAuthAdminApi.Scope;
             properties.StoreTokens(
             [
                 new AuthenticationToken { Name = SessionTokens.AccessTokenName, Value = "token-spy" },
@@ -193,6 +194,18 @@ public class RouteGuardTests
             StringComparison.Ordinal);
         // 原路由值里的 ?x=1 不得在上游以 query 形态出现——整段保持转义后的单一路径段。
         Assert.Equal(string.Empty, upstream.Query);
+    }
+
+    [Fact]
+    public async Task LegacyCookieWithoutAdministrationResource_IsClearedWithoutCallingUpstream()
+    {
+        using var factory = new ProxySpyFactory();
+        using var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("Cookie", "PandaAuth.Admin=" + factory.MintSessionCookie(administrationResource: false));
+        using var response = await client.GetAsync("/admin/api/session");
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Empty(factory.Spy.Requests);
+        Assert.Contains(response.Headers.GetValues("Set-Cookie"), value => value.Contains("expires=Thu, 01 Jan 1970", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]

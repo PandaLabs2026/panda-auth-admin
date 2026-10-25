@@ -66,6 +66,13 @@ builder.Services
         options.SlidingExpiration = true;
         options.Events.OnValidatePrincipal = async context =>
         {
+            if (!context.Properties.Items.TryGetValue(SessionTokens.AdminResourceProperty, out var resource)
+                || resource != PandaAuthAdminApi.Scope)
+            {
+                context.RejectPrincipal();
+                await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                return;
+            }
             var linkedSid = context.Principal?.FindFirstValue(PandaAuthClaims.SsoSessionId);
             if (!Guid.TryParseExact(linkedSid, "N", out _))
             {
@@ -268,6 +275,7 @@ builder.Services.AddOpenIddict()
                 Scopes.Email,
                 Scopes.Roles,
                 Scopes.OfflineAccess,
+                PandaAuthAdminApi.Scope,
             },
             // 实际回调路由为 /admin/callback/login/{provider}（Caddy 以 /admin 路径反代）。
             // 相对 URI 按请求的 host/scheme 解析，开发与生产同值可用；此处为硬编码，
@@ -482,6 +490,7 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
     if (!Guid.TryParseExact(linkedSid, "N", out _)) return Results.StatusCode(403);
     identity.AddClaim(new Claim(AdminSessionLifecycle.SessionIdClaimType, AdminSessionLifecycle.NewSessionId()));
     var properties = new AuthenticationProperties();
+    properties.Items[SessionTokens.AdminResourceProperty] = PandaAuthAdminApi.Scope;
     identity.AddClaim(new Claim(AdminSessionLifecycle.StartedAtClaimType, DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString(System.Globalization.CultureInfo.InvariantCulture)));
     var tokens = new List<AuthenticationToken>();
     if (resultProperties.GetTokenValue("backchannel_access_token") is { } accessToken)

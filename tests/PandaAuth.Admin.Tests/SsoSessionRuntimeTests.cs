@@ -67,6 +67,7 @@ public sealed class SsoSessionRuntimeTests
             if (role is not null) claims.Add(new Claim("role", role));
             if (linked) claims.Add(new Claim(PandaAuthClaims.SsoSessionId, sid));
             var properties = new AuthenticationProperties { IssuedUtc = DateTimeOffset.UtcNow, ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1) };
+            properties.Items[SessionTokens.AdminResourceProperty] = PandaAuthAdminApi.Scope;
             properties.StoreTokens([new AuthenticationToken { Name = SessionTokens.AccessTokenName, Value = "fixture-access" }]);
             var ticket = new AuthenticationTicket(new ClaimsPrincipal(new ClaimsIdentity(claims, "Cookies", "name", "role")), properties, "Cookies");
             return options.Cookie.Name + "=" + options.TicketDataFormat.Protect(ticket);

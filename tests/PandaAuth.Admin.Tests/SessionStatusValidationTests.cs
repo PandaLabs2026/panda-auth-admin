@@ -42,6 +42,7 @@ public sealed class SessionStatusValidationTests
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
         { BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false, HandleCookies = false });
         var properties = new AuthenticationProperties { IssuedUtc = DateTimeOffset.UtcNow, ExpiresUtc = DateTimeOffset.UtcNow.AddHours(1) };
+        properties.Items[SessionTokens.AdminResourceProperty] = PandaAuthAdminApi.Scope;
         properties.StoreTokens([
             new AuthenticationToken { Name = SessionTokens.AccessTokenName, Value = "fixture-access" },
             new AuthenticationToken { Name = SessionTokens.RefreshTokenName, Value = "fixture-refresh" },

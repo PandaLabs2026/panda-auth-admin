@@ -397,6 +397,7 @@ public class AdminApiProxyTests
     {
         var (principal, properties) = PrincipalWithTokens("token-1", "refresh-1", subject);
         properties.IsPersistent = true;
+        properties.Items[SessionTokens.AdminResourceProperty] = PandaAuthAdminApi.Scope;
         properties.ExpiresUtc = new DateTimeOffset(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
         var jar = new BrowserCookieJar(principal, properties);
         var context1 = ContextFromJar(jar, freezeRequestCookie, principal);
@@ -425,6 +426,8 @@ public class AdminApiProxyTests
         Assert.Equal("refresh-2", rewritten.GetTokenValue(SessionTokens.RefreshTokenName));
         Assert.True(rewritten.IsPersistent);
         Assert.Equal(properties.ExpiresUtc, rewritten.ExpiresUtc);
+        Assert.True(rewritten.Items.TryGetValue(SessionTokens.AdminResourceProperty, out var administrationResource));
+        Assert.Equal(PandaAuthAdminApi.Scope, administrationResource);
     }
 
     private static HttpContext ContextFromJar(BrowserCookieJar jar, bool freezeRequestCookie, ClaimsPrincipal principal)

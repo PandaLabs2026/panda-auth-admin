@@ -12,6 +12,9 @@ namespace PandaAuth.Admin;
 /// </remarks>
 public static class SessionTokens
 {
+    /// <summary>Only a new authorization flow requesting the administration resource writes this protected marker.</summary>
+    public const string AdminResourceProperty = ".panda_admin_resource";
+
     public const string AccessTokenName = "access_token";
 
     public const string RefreshTokenName = "refresh_token";
