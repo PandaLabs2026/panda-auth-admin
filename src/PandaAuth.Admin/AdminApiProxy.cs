@@ -153,6 +153,14 @@ public sealed class AdminApiProxy(
             request.Headers.TryAddWithoutValidation("X-Forwarded-For", ip.ToString());
         }
 
+        // 操作授权头透传（AUTH-DELIVERY-002）：浏览器侧授权对话框签发后，前端在重放
+        // 受门禁请求时携带；代理层不解释内容，仅原样转给 IDP 消费。
+        var grantHeader = context.Request.Headers["X-Panda-Mfa-Grant"].ToString();
+        if (!string.IsNullOrWhiteSpace(grantHeader))
+        {
+            request.Headers.TryAddWithoutValidation("X-Panda-Mfa-Grant", grantHeader);
+        }
+
         if (jsonBody is not null)
         {
             request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
@@ -309,7 +317,27 @@ public sealed class AdminApiProxy(
         // 当前 Server 明确返回 mfaRequired；仍保留空体 403 的兼容分支，避免依赖升级同步。
         // 旧式裸 Forbid() 也可能被默认 Cookie 方案转换为 302，本分支不能修正这种重定向。
         var mfaRequired = response.StatusCode == HttpStatusCode.Forbidden && IsMfaGate(body);
-        return new UpstreamResult((int)response.StatusCode, contentType, body, mfaRequired);
+        // 操作授权门禁（AUTH-DELIVERY-002）：403 且响应体带 mfaGrantRequired 真标记——
+        // 与 amr step-up 的 mfaRequired 不同标记，前端弹页内 TOTP(+密码)授权对话框而非整页跳转。
+        var grantRequired = response.StatusCode == HttpStatusCode.Forbidden && IsGrantGate(body);
+        return new UpstreamResult((int)response.StatusCode, contentType, body, mfaRequired, grantRequired);
+    }
+
+    /// <summary>上游 403 是否命中操作授权门禁：响应体带布尔真 mfaGrantRequired（只认真标记）。</summary>
+    private static bool IsGrantGate(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return false;
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("mfaGrantRequired", out var value)
+                && value.ValueKind == JsonValueKind.True;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 
     /// <summary>上游 403 是否命中 MFA 门禁：响应体带布尔真标记，或为空体（裸 Forbid 过渡期）。</summary>
@@ -350,8 +378,9 @@ public sealed class AdminApiProxy(
             => element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.True;
     }
 
-    /// <summary>上游透传结果：除可选的 MFA 标记响应头外不改动任何内容（Results.Content 不支持自定义头）。</summary>
-    private sealed class UpstreamResult(int statusCode, string contentType, string body, bool mfaRequired) : IResult, IStatusCodeHttpResult
+    /// <summary>上游透传结果：除可选的 MFA/授权标记响应头外不改动任何内容（Results.Content 不支持自定义头）。</summary>
+    private sealed class UpstreamResult(
+        int statusCode, string contentType, string body, bool mfaRequired, bool grantRequired) : IResult, IStatusCodeHttpResult
     {
         public int? StatusCode => statusCode;
 
@@ -362,6 +391,10 @@ public sealed class AdminApiProxy(
             if (mfaRequired)
             {
                 httpContext.Response.Headers["X-Panda-Mfa-Required"] = "true";
+            }
+            if (grantRequired)
+            {
+                httpContext.Response.Headers["X-Panda-Mfa-Grant-Required"] = "true";
             }
 
             await httpContext.Response.WriteAsync(body, httpContext.RequestAborted);

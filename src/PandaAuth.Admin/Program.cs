@@ -626,6 +626,14 @@ async Task<string?> ReadJsonBodyAsync(HttpContext ctx)
     return await reader.ReadToEndAsync(ctx.RequestAborted);
 }
 
+// 操作授权签发（AUTH-DELIVERY-002）：前端授权对话框 → 本端点 → IDP /admin-api/mfa-grants。
+app.MapPost("/admin/api/mfa-grants", (HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.MfaGrants, HttpMethod.Post, await ReadJsonBodyAsync(ctx))));
+
+// MFA 能力探针：转发 IDP 会话探针（totpBound/mfaSatisfied），供 SPA 预判绑定引导与 step-up 状态。
+app.MapGet("/admin/api/mfa/capability", (HttpContext ctx, AdminApiProxy proxy)
+    => proxy.ForwardAsync(PandaAuthAdminApi.Session, HttpMethod.Get));
+
 app.MapGet("/admin/api/users", (HttpContext ctx, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.Users + ctx.Request.QueryString.Value, HttpMethod.Get));
 

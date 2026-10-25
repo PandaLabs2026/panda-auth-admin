@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { apiGet, apiSend, ApiError, buildStepUpUrl } from "./api"
+import { rejectGrant, resolveGrant } from "@/lib/grant-flow"
 
 function json(body: unknown, init?: ResponseInit): Response {
   return new Response(JSON.stringify(body), {
@@ -130,5 +131,59 @@ describe("apiGet ProblemDetails", () => {
       message: "用户服务暂不可用。",
       code: "server.upstream_unavailable",
     })
+  })
+})
+
+describe("apiSend operation-grant flow (AUTH-DELIVERY-002)", () => {
+  function stubGrantRoute() {
+    const seen: Array<{ grantHeader?: string }> = []
+    let first = true
+    vi.stubGlobal("fetch", vi.fn((path: string, init?: RequestInit) => {
+      if (path === "/admin/api/antiforgery") return Promise.resolve(json({ token: "csrf-token" }))
+      if (path !== "/admin/api/users/u-1/status") return Promise.reject(new Error(`unexpected request: ${path}`))
+      const headers = init?.headers as Record<string, string> | undefined
+      seen.push({ grantHeader: headers?.["X-Panda-Mfa-Grant"] })
+      if (first) {
+        first = false
+        return Promise.resolve(
+          json(
+            {
+              mfaGrantRequired: true,
+              operation: "admin.users.set-status",
+              targetId: "u-1",
+              parameters: { status: "Frozen" },
+              passwordRequired: false,
+            },
+            { status: 403, headers: { "X-Panda-Mfa-Grant-Required": "true" } },
+          ),
+        )
+      }
+      return Promise.resolve(json({ id: "u-1", status: 1 }))
+    }))
+    return seen
+  }
+
+  it("suspends on grant-required 403, then retries with X-Panda-Mfa-Grant after resolveGrant", async () => {
+    const seen = stubGrantRoute()
+
+    const pending = apiSend("POST", "/admin/api/users/u-1/status", { status: 1 })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    // 对话框未确认前，原请求保持挂起（只有裸试那一次）。
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.grantHeader).toBeUndefined()
+
+    resolveGrant("11111111-1111-1111-1111-111111111111")
+    await expect(pending).resolves.toMatchObject({ id: "u-1" })
+    expect(seen[1]?.grantHeader).toBe("11111111-1111-1111-1111-111111111111")
+  })
+
+  it("rejects the suspended request when the dialog is canceled", async () => {
+    stubGrantRoute()
+
+    const pending = apiSend("POST", "/admin/api/users/u-1/status", { status: 1 })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    rejectGrant(new Error("操作已取消：该操作需要先完成验证。"))
+    await expect(pending).rejects.toThrow("操作已取消")
   })
 })
