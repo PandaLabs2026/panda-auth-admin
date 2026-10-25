@@ -1,4 +1,1 @@
-// Synchronous bootstrap preserves the system theme before the SPA renders.
-if (matchMedia("(prefers-color-scheme: dark)").matches) {
-  document.documentElement.classList.add("dark")
-}
+// PandaAuth Admin defaults to the light theme. No system preference is applied.
