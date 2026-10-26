@@ -894,7 +894,7 @@ export default function UsersPage() {
           <CardHeader>
             <CardTitle className="text-base">{t("自定义 Claims")}</CardTitle>
             <CardDescription>
-              {t("仅允许 panda: 命名空间；Claim 只有在客户端申请对应 scope 时才会进入 Token。添加和删除需要近期完成 WebAuthn。")}
+              {t("仅允许 panda: 命名空间；Claim 只有在客户端申请对应 scope 时才会进入 Token。添加和删除需验证认证器验证码与当前密码。")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

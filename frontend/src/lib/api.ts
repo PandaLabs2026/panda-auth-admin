@@ -7,8 +7,22 @@
 
 import { currentLocale, serverMessagesEn } from "@/i18n/config"
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout"
+import { beginGrantFlow } from "@/lib/grant-flow"
 
 const MFA_REQUIRED_HEADER = "X-Panda-Mfa-Required"
+const MFA_GRANT_REQUIRED_HEADER = "X-Panda-Mfa-Grant-Required"
+
+/** 服务端 403 mfaGrantRequired 的结构化信号：携带授权签发所需的全部参数回显。 */
+export class GrantRequiredSignal extends Error {
+  constructor(
+    readonly operation: string,
+    readonly targetId: string,
+    readonly parameters: Record<string, string | null> | null,
+    readonly passwordRequired: boolean,
+  ) {
+    super("mfa_grant_required")
+  }
+}
 
 /**
  * 带服务端稳定错误码的 API 错误(ADR 2026-10-11-admin-error-codes):
@@ -116,6 +130,23 @@ export async function apiGet<T>(path: string): Promise<T> {
 
 export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   const token = await fetchAntiforgeryToken()
+  try {
+    return await rawSend<T>(method, path, body, token)
+  } catch (cause) {
+    // 操作授权流（AUTH-DELIVERY-002）：403 授权标记 → 对话框签发 → 带授权头重放原请求。
+    if (!(cause instanceof GrantRequiredSignal)) throw cause
+    const grantId = await beginGrantFlow(cause)
+    return await rawSend<T>(method, path, body, token, grantId)
+  }
+}
+
+async function rawSend<T>(
+  method: "POST" | "PUT" | "DELETE",
+  path: string,
+  body: unknown | undefined,
+  token: string,
+  grantId?: string,
+): Promise<T> {
   return fetchWithTimeout(
     path,
     {
@@ -124,11 +155,30 @@ export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string
         "Content-Type": "application/json",
         "X-XSRF-Token": token,
         "X-Requested-With": "XMLHttpRequest",
+        ...(grantId ? { "X-Panda-Mfa-Grant": grantId } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     },
     async (response) => {
       if (response.status === 401) unauthorized()
+      if (response.status === 403 && response.headers.get(MFA_GRANT_REQUIRED_HEADER) === "true") {
+        // 服务端回显授权签发所需的全部参数（operation/targetId/parameters/passwordRequired），
+        // 前端原样回传签发，两端口径不漂移。
+        const body = (await response.json().catch(() => null)) as {
+          operation?: string
+          targetId?: string
+          parameters?: Record<string, string | null> | null
+          passwordRequired?: boolean
+        } | null
+        if (body?.operation) {
+          throw new GrantRequiredSignal(
+            body.operation,
+            body.targetId ?? "",
+            body.parameters ?? null,
+            body.passwordRequired === true,
+          )
+        }
+      }
       if (response.status === 403 && response.headers.get(MFA_REQUIRED_HEADER) === "true") mfaRequired()
       if (!response.ok) {
         // 非 ProblemDetails 的失败(裸 5xx、代理故障等)折算人话文案,不把原始状态码甩给用户。
@@ -158,6 +208,9 @@ export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string
     },
   )
 }
+
+/** MFA 能力探针（BFF 转发 IDP 会话探针）：totpBound=false 时 SPA 全局绑定引导。 */
+export type MfaCapability = { totpBound: boolean; mfaSatisfied: boolean }
 
 /** 契约类型（与 panda-auth-share 的 PandaAuthAdminApi.cs 对应，camelCase JSON）。 */
 export type PageResult<T> = { items: T[]; total: number; page: number; pageSize: number }

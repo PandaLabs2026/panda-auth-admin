@@ -99,7 +99,6 @@
   "冻结": "Freeze",
   "解冻": "Unfreeze",
   "自定义 Claims": "Custom claims",
-  "仅允许 panda: 命名空间；Claim 只有在客户端申请对应 scope 时才会进入 Token。添加和删除需要近期完成 WebAuthn。": "Only the panda: namespace is allowed; claims enter tokens only when a client requests the matching scope. Adding and removing require recent WebAuthn.",
   "类型": "Type",
   "值": "Value",
   "删除": "Delete",
@@ -237,5 +236,18 @@
   "全部已读": "Mark all as read",
   "正在加载通知": "Loading notifications",
   "暂无通知": "No notifications",
-  "关闭一次性密码": "Dismiss one-time password"
+  "关闭一次性密码": "Dismiss one-time password",
+  "仅允许 panda: 命名空间；Claim 只有在客户端申请对应 scope 时才会进入 Token。添加和删除需验证认证器验证码与当前密码。": "Only the panda: namespace is allowed; a claim enters tokens only when the client requests the matching scope. Adding and removing require an authenticator code and your current password.",
+  "仅允许 panda: 命名空间；添加和删除需验证认证器验证码与当前密码。": "Only the panda: namespace is allowed. Adding and removing require an authenticator code and your current password.",
+  "操作验证": "Action verification",
+  "该操作需要验证当前认证器验证码与登录密码，授权仅本次有效。": "This action requires a code from your authenticator and your current password. The authorization is valid for this action only.",
+  "该操作需要验证当前认证器验证码，授权仅本次有效。": "This action requires a code from your authenticator. The authorization is valid for this action only.",
+  "输入认证器 6 位验证码": "Enter the 6-digit code from your authenticator",
+  "当前密码": "Current password",
+  "验证并继续": "Verify and continue",
+  "操作已取消：该操作需要先完成验证。": "Action canceled: verification is required first.",
+  "请先绑定 TOTP 验证器": "Please bind a TOTP authenticator first",
+  "管理员须以密码＋TOTP 使用管理台；绑定前管理操作不可用。完成绑定后返回本页继续。": "Admins must sign in with a password and TOTP. Management actions are unavailable until you bind one. Return to this page after binding.",
+  "前往绑定 TOTP": "Bind TOTP",
+  "验证中…": "Verifying..."
 }

@@ -204,7 +204,7 @@ export default function RolesPage() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{t("自定义 Claims · {name}", { name: result?.items.find((role) => role.id === roleId)?.name ?? roleId })}</CardTitle>
-            <CardDescription>{t("仅允许 panda: 命名空间；添加和删除需要近期完成 WebAuthn。")}</CardDescription>
+            <CardDescription>{t("仅允许 panda: 命名空间；添加和删除需验证认证器验证码与当前密码。")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {claimsLoading ? (
