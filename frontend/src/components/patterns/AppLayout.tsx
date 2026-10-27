@@ -30,6 +30,9 @@ import { notify } from '@/lib/notify';
  * 用户身份区固定在 SidebarFooter(NavUser 接 useSession/useLogout)。
  * 内容区默认全宽（后台表格/看板优先）,阅读型页面自行收窄:
  * 应用级用 contentClassName,页面级在页面根节点加 max-w-* mx-auto。
+ * overflow-x-clip 是骨架完整性约束:文档一旦横向滚动,sticky 顶栏(z-30)会
+ * 随内容左移盖到 fixed 侧栏(z-10)上;故横向溢出只允许发生在页面自己的
+ * 滚动容器内(DataTable/pre 等),超宽杂散内容在内容区边缘裁剪而不撑宽文档。
  */
 
 export interface NavItem {
@@ -127,7 +130,7 @@ export default function AppLayout({
           </NavUser>
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset>
+      <SidebarInset className="min-w-0">
         <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background px-4">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-4" />
@@ -136,7 +139,7 @@ export default function AppLayout({
             {headerActions}
           </div>
         </header>
-        <main className={cn('flex w-full flex-1 flex-col gap-6 p-6', contentClassName)}>
+        <main className={cn('flex w-full min-w-0 flex-1 flex-col gap-6 overflow-x-clip p-6', contentClassName)}>
           <Outlet />
         </main>
         <footer className="border-t px-4 py-2 text-[11px] text-muted-foreground">
