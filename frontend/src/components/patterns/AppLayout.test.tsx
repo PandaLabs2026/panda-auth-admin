@@ -102,6 +102,8 @@ test('内容区默认全宽:无 max-w-* 上限,纵向撑满(flex-1)', async () =
   const content = screen.getAllByRole('main').at(-1)!;
   expect(content.className).toContain('flex-1');
   expect(content.className).toContain('gap-6');
+  // 骨架完整性:内容区横向裁剪,文档永不横向滚动(否则 sticky 顶栏会盖到 fixed 侧栏上)
+  expect(content.className).toContain('overflow-x-clip');
   expect(content.className).not.toContain('max-w-');
 });
 
