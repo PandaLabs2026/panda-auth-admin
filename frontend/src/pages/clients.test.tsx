@@ -231,3 +231,15 @@ describe("ClientsPage long callback URIs", () => {
     expect(container.querySelector('[data-slot="table-container"]')).toHaveClass("overflow-x-auto")
   })
 })
+
+it("preserves an unfinished client form when detail is refreshed", async () => {
+  vi.stubGlobal("fetch", pagedFetch())
+  const user = userEvent.setup()
+  let client!: QueryClient
+  render(<Providers initialEntries={["/?client=client-1"]}><ClientsPage /><HistoryProbe capture={value => { client = value }} /></Providers>)
+  const field = await screen.findByLabelText("RedirectUris（至少一条）")
+  await user.clear(field)
+  await user.type(field, "https://edited.example/callback")
+  await act(async () => { client.setQueryData(["clients-detail", "client-1"], { ...detail("client-1", "Client 1"), redirectUris: ["https://server.example/callback"] }); await new Promise(resolve => setTimeout(resolve, 20)) })
+  await waitFor(() => expect(field).toHaveValue("https://edited.example/callback"))
+})

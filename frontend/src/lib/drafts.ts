@@ -1,3 +1,7 @@
+let draftOwner: string | null = null
+/** Presentation metadata for approved drafts, never an authentication decision. */
+export function bindDraftOwner(subject?: string) { draftOwner = subject?.trim() || null }
+
 /**
  * MFA step-up 草稿暂存(#26):命中 MFA 门禁会全页跳 /account/mfa,React state 随之清零。
  * 变更 handler 发请求前 saveDraft;回到页面后按实体匹配 consumeDraft 恢复——
@@ -6,7 +10,8 @@
  */
 export function saveDraft<T>(key: string, value: T): void {
   try {
-    sessionStorage.setItem(`panda.admin.draft.${key}`, JSON.stringify(value))
+    if (!draftOwner) return
+    sessionStorage.setItem(`panda.admin.draft.${key}`, JSON.stringify({ schema: 1, owner: draftOwner, value }))
   } catch {
     // 隐私模式等 sessionStorage 不可用的场景:草稿降级为不暂存,不影响主流程。
   }
@@ -18,7 +23,10 @@ export function consumeDraft<T>(key: string): T | null {
     const raw = sessionStorage.getItem(`panda.admin.draft.${key}`)
     if (raw === null) return null
     sessionStorage.removeItem(`panda.admin.draft.${key}`)
-    return JSON.parse(raw) as T
+    const envelope: unknown = JSON.parse(raw)
+    if (!envelope || typeof envelope !== "object" || !draftOwner) return null
+    const saved = envelope as { schema?: unknown; owner?: unknown; value?: unknown }
+    return saved.schema === 1 && saved.owner === draftOwner ? saved.value as T : null
   } catch {
     return null
   }

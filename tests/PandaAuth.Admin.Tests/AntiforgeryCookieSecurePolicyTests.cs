@@ -97,6 +97,30 @@ public class AntiforgeryCookieSecurePolicyTests
     }
 
     [Fact]
+    public async Task NativeLogoutForm_WithoutAntiforgery_ShowsFailurePage()
+    {
+        using var factory = Factory("Development", authenticated: true);
+        using var response = await factory.CreateClient().PostAsync("/admin/api/logout",
+            new FormUrlEncodedContent(new Dictionary<string, string>()));
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("退出未完成", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
+    public async Task NativeLogoutForm_WithoutSession_DoesNotStartLogin()
+    {
+        using var factory = Factory("Development");
+        using var client = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+        using var response = await client.PostAsync("/admin/api/logout",
+            new FormUrlEncodedContent(new Dictionary<string, string>()));
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal("text/html", response.Content.Headers.ContentType?.MediaType);
+        Assert.Null(response.Headers.Location);
+        Assert.Contains("退出未完成", await response.Content.ReadAsStringAsync());
+    }
+
+    [Fact]
     public void Production_AntiforgeryCookieSecurePolicy_IsAlways()
     {
         using var factory = Factory("Production");

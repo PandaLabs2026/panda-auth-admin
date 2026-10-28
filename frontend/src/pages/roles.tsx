@@ -1,3 +1,4 @@
+import { useAuthLeaveGuard } from "@/components/patterns/auth/context"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -37,6 +38,8 @@ export default function RolesPage() {
   const queryClient = useQueryClient()
   const [claimDraft, setClaimDraft] = useState<ClaimRequest>(EMPTY_CLAIM)
   const [claimsBusy, setClaimsBusy] = useState(false)
+  useAuthLeaveGuard(JSON.stringify(claimDraft) !== JSON.stringify(EMPTY_CLAIM), "未保存的角色声明")
+  useAuthLeaveGuard(claimsBusy, "进行中的角色操作")
   const [searchParams, setSearchParams] = useSearchParams()
 
   const query = searchParams.get("q") ?? ""

@@ -1,10 +1,11 @@
+import { useAuthState } from "@/components/patterns/auth/context"
 import type { ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
 import GrantDialogHost from "@/components/grant-dialog-host"
 import RequireAuth from "@/components/patterns/RequireAuth"
 import { useSession } from "@/lib/auth"
-import { apiGet, type MfaCapability } from "@/lib/api"
+import { apiGet, ApiError, type MfaCapability } from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 
 /**
@@ -14,16 +15,25 @@ import { useI18n } from "@/lib/i18n"
  * 同时挂载操作授权对话框宿主：高风险操作 403 授权标记 → 页内 TOTP(+密码) 验证 → 带头重放。
  */
 export function SessionGate({ children }: { children: ReactNode }) {
+  const auth = useAuthState()
   const session = useSession()
   const { t } = useI18n()
   const capability = useQuery({
-    queryKey: ["mfa-capability"],
+    queryKey: ["mfa-capability", session.data?.subject],
+    enabled: session.isSuccess && Boolean(session.data),
     queryFn: () => apiGet<MfaCapability>("/admin/api/mfa/capability"),
     staleTime: 60_000,
     retry: false,
     // 能力探针失败不阻断界面：旧版 server 无此端点时按已绑定降级，管理请求失败由错误路径展示。
     throwOnError: false,
   })
+
+  if (session.isError && session.error instanceof ApiError && session.error.status === 403) {
+    return <div className="flex flex-col items-start gap-3 pt-2" role="alert">
+      <p>{t("无权访问管理后台")}</p>
+      <Button variant="outline" onClick={() => void session.refetch()}>{t("重试")}</Button>
+    </div>
+  }
 
   if (session.isError) {
     return (
@@ -32,6 +42,10 @@ export function SessionGate({ children }: { children: ReactNode }) {
         <Button variant="outline" onClick={() => void session.refetch()}>{t("重试")}</Button>
       </div>
     )
+  }
+
+  if (session.data && capability.isPending) {
+    return <div className="pt-2 text-sm text-muted-foreground" role="status">{t("正在确认管理权限…")}</div>
   }
 
   if (session.isSuccess && capability.isSuccess && capability.data?.totpBound === false) {
@@ -48,10 +62,8 @@ export function SessionGate({ children }: { children: ReactNode }) {
     )
   }
 
-  return (
-    <RequireAuth>
-      {children}
-      <GrantDialogHost />
-    </RequireAuth>
-  )
+  const content = <>{children}<GrantDialogHost /></>
+  // The shared boundary owns admission and retains protected drafts while hidden.
+  // A nested legacy redirect would destroy that retained subtree during recheck.
+  return auth.lifecycle ? content : <RequireAuth>{content}</RequireAuth>
 }

@@ -1,5 +1,5 @@
-import { lazy, Suspense, useEffect } from "react"
-import { createBrowserRouter, useNavigate } from "react-router"
+import { lazy, Suspense } from "react"
+import { createBrowserRouter } from "react-router"
 import { KeyRoundIcon, LogOutIcon } from "lucide-react"
 import AppLayout, { type NavItem } from "@/components/patterns/AppLayout"
 import HeaderActions from "@/components/header-actions"
@@ -8,14 +8,15 @@ import ForbiddenPage from "@/pages/ForbiddenPage"
 import LoginPage from "@/pages/login"
 import NotFoundPage from "@/pages/NotFoundPage"
 import ServerErrorPage from "@/pages/ServerErrorPage"
-import { sessionApi, registerSessionExpiredHandler } from "@/lib/auth"
+import { useAuthState } from "@/components/patterns/auth/context"
+import AdminAuthBoundary from "./AdminAuthBoundary"
 import { NAV } from "@/lib/nav"
 import { useI18n } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
 
 /**
  * 路由(模板 v0.5.0 形态):/login 独立无布局,其余挂在 AppLayout(侧栏+固定顶栏)
- * 与 RequireAuth 守卫之下;403/500/404 错误页入册。页面 lazy() 拆 chunk,
+ * 与共同 AuthBoundary、管理权限门之下;403/500/404 错误页入册。页面 lazy() 拆 chunk,
  * Suspense 骨架与正式布局同锚点顶对齐。basename 跟随 Vite base(/admin/)。
  */
 
@@ -41,6 +42,7 @@ const page = (node: React.ReactNode) => <Suspense fallback={<PageFallback />}>{n
  *  面板动作标签随语言切换的刷新由整页行为承载,可接受。 */
 function useCommandActions() {
   const { t } = useI18n()
+  const { logout } = useAuthState()
   return [
     {
       id: "change-password",
@@ -53,7 +55,7 @@ function useCommandActions() {
       label: t("退出登录"),
       icon: LogOutIcon,
       shortcut: "⌘⇧Q",
-      run: () => void sessionApi.logout().catch((error) => notify.failure(error, "退出登录失败；当前会话未确认已注销。")),
+      run: () => void logout().catch((error) => notify.failure(error, "退出登录失败；当前会话未确认已注销。")),
     },
   ]
 }
@@ -76,16 +78,7 @@ export function AppShell() {
   )
 }
 
-/** 401 → 会话过期处理(模板接线):SPA 跳登录页带来源回跳;数据层 401 走 api.ts 整页跳转,双轨见 lib/auth.ts。 */
-function SessionExpiredBridge() {
-  const navigate = useNavigate()
-  useEffect(() => {
-    registerSessionExpiredHandler((from) =>
-      navigate("/login", { replace: true, state: { from: from.startsWith("/") ? from : "/" } }),
-    )
-  }, [navigate])
-  return null
-}
+/** Protected routes mount inside the shared authentication boundary. */
 
 export const router = createBrowserRouter(
   [
@@ -93,7 +86,6 @@ export const router = createBrowserRouter(
       path: "/login",
       element: (
         <>
-          <SessionExpiredBridge />
           <LoginPage />
         </>
       ),
@@ -101,12 +93,9 @@ export const router = createBrowserRouter(
     {
       path: "/",
       element: (
-        <>
-          <SessionExpiredBridge />
-          <SessionGate>
-            <AppShell />
-          </SessionGate>
-        </>
+        <AdminAuthBoundary>
+          <SessionGate><AppShell /></SessionGate>
+        </AdminAuthBoundary>
       ),
       children: [
         { index: true, element: page(<DashboardPage />) },

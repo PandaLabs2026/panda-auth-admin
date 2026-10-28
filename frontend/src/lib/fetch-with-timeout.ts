@@ -7,12 +7,19 @@ export async function fetchWithTimeout<T>(
   consumeResponse: (response: Response) => Promise<T>,
   timeoutMs = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
+  init.signal?.throwIfAborted()
   const controller = new AbortController()
+  const cancel = () => controller.abort(init.signal?.reason)
+  init.signal?.addEventListener("abort", cancel, { once: true })
   const timeout = window.setTimeout(() => controller.abort(), timeoutMs)
   try {
     const response = await fetch(input, { ...init, signal: controller.signal })
-    return await consumeResponse(response)
+    controller.signal.throwIfAborted()
+    const result = await consumeResponse(response)
+    controller.signal.throwIfAborted()
+    return result
   } finally {
     window.clearTimeout(timeout)
+    init.signal?.removeEventListener("abort", cancel)
   }
 }

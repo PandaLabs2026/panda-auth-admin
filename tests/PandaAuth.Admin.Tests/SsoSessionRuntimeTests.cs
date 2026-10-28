@@ -21,10 +21,13 @@ namespace PandaAuth.Admin.Tests;
 public sealed class SsoSessionRuntimeTests
 {
     [Theory]
-    [InlineData("admin", true)]
-    [InlineData("admin", false)]
+    [InlineData("admin", true, false, false)]
+    [InlineData("admin", true, true, false)]
+    [InlineData("admin", true, true, true)]
+    [InlineData("admin", false, false, false)]
+    [InlineData("admin", false, true, false)]
 
-    public async Task SharedLogout_RevokesLinkedSession_ButPreservesAnotherDevice(string? role, bool sharedLogoutEnabled)
+    public async Task SharedLogout_RevokesLinkedSession_ButPreservesAnotherDevice(string? role, bool sharedLogoutEnabled, bool nativeForm, bool endSessionUnavailable)
     {
         var state = new CentralState();
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -44,7 +47,7 @@ public sealed class SsoSessionRuntimeTests
                     var configuration = new OpenIddictConfiguration
                     {
                         Issuer = new Uri("https://idp.example.invalid/"),
-                        EndSessionEndpoint = new Uri("https://idp.example.invalid/connect/logout"),
+                        EndSessionEndpoint = endSessionUnavailable ? null : new Uri("https://idp.example.invalid/connect/logout"),
                     };
                     var registration = options.Registrations.Single(r => r.ProviderName == "pandaauth");
                     registration.Configuration = configuration;
@@ -91,9 +94,17 @@ public sealed class SsoSessionRuntimeTests
         state.RevokeUnavailable = true;
         using (var failedRequest = new HttpRequestMessage(HttpMethod.Post, "/admin/api/logout"))
         {
-            failedRequest.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
+            if (nativeForm)
+                failedRequest.Content = new FormUrlEncodedContent(new Dictionary<string, string> {
+                    ["__RequestVerificationToken"] = payload.GetProperty("token").GetString()!
+                });
+            else failedRequest.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
             using var failed = await client.SendAsync(failedRequest);
             Assert.Equal(HttpStatusCode.ServiceUnavailable, failed.StatusCode);
+            if (nativeForm) {
+                Assert.Equal("text/html", failed.Content.Headers.ContentType?.MediaType);
+                Assert.Contains("退出未完成", await failed.Content.ReadAsStringAsync());
+            }
         }
         using (var retryable = await client.GetAsync("/admin/api/session"))
             Assert.Equal(HttpStatusCode.OK, retryable.StatusCode);
@@ -101,9 +112,35 @@ public sealed class SsoSessionRuntimeTests
         state.RevokeUnavailable = false;
         }
         using var request = new HttpRequestMessage(HttpMethod.Post, "/admin/api/logout");
-        request.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
+        if (nativeForm)
+            request.Content = new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = payload.GetProperty("token").GetString()!
+            });
+        else request.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
         using var logout = await client.SendAsync(request);
+        if (endSessionUnavailable)
+        {
+            Assert.Equal(HttpStatusCode.InternalServerError, logout.StatusCode);
+            Assert.Equal("text/html", logout.Content.Headers.ContentType?.MediaType);
+            Assert.Contains("退出未完成", await logout.Content.ReadAsStringAsync());
+        }
+        else
+        {
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
+        var localProof = logout.Headers.GetValues("Set-Cookie")
+            .Single(value => value.StartsWith(AdminLogoutProof.CookieName + "=", StringComparison.Ordinal));
+        Assert.Contains("httponly", localProof, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("secure", localProof, StringComparison.OrdinalIgnoreCase);
+        using (var terminalClient = factory.CreateClient(new WebApplicationFactoryClientOptions {
+            BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            terminalClient.DefaultRequestHeaders.Add("Cookie", localProof.Split(';')[0]);
+            using var terminal = await terminalClient.GetAsync("/admin/signed-out");
+            Assert.Equal(HttpStatusCode.OK, terminal.StatusCode);
+            Assert.Contains("本应用的本地会话已清除", await terminal.Content.ReadAsStringAsync());
+            Assert.Contains(terminal.Headers.GetValues("Set-Cookie"), value => value.StartsWith(AdminLogoutProof.CookieName + "=;", StringComparison.Ordinal));
+        }
+        }
         Assert.Equal(sharedLogoutEnabled, state.Revoked.Contains(sidA));
         UseCookie(cookieA);
         using var revoked = await client.GetAsync("/admin/api/session");

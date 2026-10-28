@@ -213,6 +213,7 @@ builder.Services.AddTokenRevocation(builder.Configuration, new TokenRevocationOp
 var idpInternalBase = builder.Configuration["Auth:IdpInternalBaseAddress"] ?? "http://127.0.0.1:9004/";
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<AdminSessionLifecycle>();
+builder.Services.AddSingleton<AdminLogoutProof>();
 builder.Services.AddHttpClient("session-state", client =>
 {
     client.BaseAddress = new Uri(idpInternalBase);
@@ -357,6 +358,13 @@ if (clientEncryptionCredentials is null)
 // SecurityHeaders 在进入后续管线前已写好响应头，错误响应同样带安全头。
 app.UseExceptionHandler(errorApp => errorApp.Run(async httpContext =>
 {
+    if (IsNativeLogoutForm(httpContext))
+    {
+        await LogoutFailure(httpContext, StatusCodes.Status500InternalServerError,
+            "退出交接未完成。请核实本应用与身份中心的当前登录状态。")
+            .ExecuteAsync(httpContext);
+        return;
+    }
     await Results.Problem(
         statusCode: StatusCodes.Status500InternalServerError,
         title: "服务器内部错误",
@@ -377,6 +385,21 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseMiddleware<TenantHostContextMiddleware>();
+// A native logout form must stop on missing admission, never challenge back into login.
+// Authorized requests still pass through the unchanged fallback policy and antiforgery guard.
+app.Use(async (context, next) =>
+{
+    if (IsNativeLogoutForm(context) && (context.User.Identity?.IsAuthenticated != true ||
+        !context.User.HasClaim(Claims.Role, PandaAuthRoles.Admin)))
+    {
+        var status = context.User.Identity?.IsAuthenticated == true
+            ? StatusCodes.Status403Forbidden : StatusCodes.Status401Unauthorized;
+        await LogoutFailure(context, status, "当前登录状态无法完成退出，请明确选择后续操作。")
+            .ExecuteAsync(context);
+        return;
+    }
+    await next(context);
+});
 app.UseAuthorization();
 // 限流中间件：基于端点元数据（RequireRateLimiting）生效，须在认证之后（限流分区取真实 IP 依赖
 // ForwardedHeaders 已处理）、端点执行之前。
@@ -399,17 +422,8 @@ app.MapGet("/admin/challenge", (string? returnUrl, string? error) =>
 {
     if (!string.IsNullOrEmpty(error))
     {
-        var sanitized = LoginReturnUrl.Sanitize(returnUrl);
-        // 重试链接保留已白名单化的 returnUrl（相对引用语义，消费点仍是本端点的 Sanitize）。
-        var retryHref = "/admin/login" + (sanitized == LoginReturnUrl.Fallback
-            ? string.Empty
-            : "?returnUrl=" + Uri.EscapeDataString(sanitized));
-        return Results.Content(
-            "<!doctype html><html lang=\"zh\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
-            "<title>登录失败</title><body style=\"font-family:system-ui;padding:3rem;max-width:40rem\">" +
-            $"<h1 style=\"font-size:1.25rem\">登录失败</h1><p style=\"line-height:1.8\">{LoginError.Describe(error)}</p>" +
-            $"<p><a href=\"{retryHref}\">重试登录</a>　<a href=\"/admin/\">回到首页</a></p>" +
-            "</body></html>",
+        return Results.Content(AdminAuthPage.Render("登录失败", [LoginError.Describe(error),
+            "请明确选择重试；若持续失败，请联系管理员。"], false, returnUrl, "重试登录"),
             "text/html; charset=utf-8");
     }
 
@@ -454,8 +468,7 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
             context.Request.Host.Host);
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         return Results.Content(
-            "<!doctype html><html lang=\"zh\"><meta charset=\"utf-8\"><title>403</title>" +
-            "<body style=\"font-family:system-ui;padding:3rem\">租户入口与登录上下文不匹配。</body></html>",
+            AdminAuthPage.Render("无法进入管理后台", ["租户入口与登录上下文不匹配。"], false),
             "text/html; charset=utf-8");
     }
 
@@ -470,8 +483,7 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
             context.Connection.RemoteIpAddress);
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         return Results.Content(
-            "<!doctype html><html lang=\"zh\"><meta charset=\"utf-8\"><title>403</title>" +
-            "<body style=\"font-family:system-ui;padding:3rem\">该账号没有管理后台权限。</body></html>",
+            AdminAuthPage.Render("无法进入管理后台", ["该账号没有管理后台权限。"], false),
             "text/html; charset=utf-8");
     }
 
@@ -551,6 +563,22 @@ static string NormalizeRouteValue(string value) => Uri.UnescapeDataString(value)
 
 // 变更类端点的防伪样板收敛：此前逐端点抄 try/catch（加端点 = 再抄一段，漏抄一段 = 该端点
 // CSRF 裸奔）。端点只声明业务转发参数；防伪失败统一 400，行为与收敛前一致。
+static bool IsNativeLogoutForm(HttpContext context) =>
+    context.Request.Path == "/admin/api/logout" && context.Request.HasFormContentType &&
+    context.Request.Headers["X-Requested-With"] != "XMLHttpRequest";
+
+static IResult LogoutFailure(HttpContext context, int status, string detail)
+{
+    context.Response.Headers.CacheControl = "no-store";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    context.Response.Headers.XFrameOptions = "DENY";
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; frame-ancestors 'none'";
+    return Results.Content(AdminAuthPage.Render("退出未完成", [detail,
+        "当前会话未确认已注销。请返回管理台重新发起退出；此页面不会自动重试。"], true),
+        "text/html; charset=utf-8", statusCode: status);
+}
+
 async Task<IResult> WithAntiforgeryAsync(HttpContext ctx, Func<Task<IResult>> handler)
 {
     try
@@ -559,11 +587,29 @@ async Task<IResult> WithAntiforgeryAsync(HttpContext ctx, Func<Task<IResult>> ha
     }
     catch (AntiforgeryValidationException)
     {
-        return Results.BadRequest();
+        return IsNativeLogoutForm(ctx)
+            ? LogoutFailure(ctx, StatusCodes.Status400BadRequest, "退出请求已失效，请重新发起。")
+            : Results.BadRequest();
     }
 
     return await handler();
 }
+
+// A terminal page is public and never starts a new authentication challenge.
+// Direct visits are not evidence that local or identity-provider logout completed.
+app.MapGet("/admin/signed-out", (HttpContext context, AdminLogoutProof proof) => {
+    var confirmed = proof.Validate(context.Request.Cookies[AdminLogoutProof.CookieName], DateTimeOffset.UtcNow,
+        context.User.Identity?.IsAuthenticated == true);
+    context.Response.Cookies.Delete(AdminLogoutProof.CookieName, AdminLogoutProof.CookieOptions);
+    context.Response.Headers.CacheControl = "no-store";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    return Results.Content(AdminAuthPage.Render("退出状态", [
+        confirmed ? "本应用的本地会话已清除。" : "本应用的本地退出结果未确认。",
+        "身份中心及关联应用的退出结果未确认。",
+        "如需重新进入管理台，请明确选择继续登录。"], false), "text/html; charset=utf-8");
+}).AllowAnonymous();
+
+app.MapGet("/admin/callback/logout/{provider}", () => Results.Redirect("/admin/signed-out")).AllowAnonymous();
 
 // 登出：防伪校验 → 撤销 IDP 令牌（尽力而为）→ 清本地会话 → RP 端到端登出（end-session）。
 // 不匿名豁免：登出只对已登录会话有意义；匿名 POST 由 FallbackPolicy 拦下（302，前端仅在有会话时调用）。
@@ -584,7 +630,9 @@ app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient rev
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
             {
-                return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "会话撤销服务不可用");
+                return IsNativeLogoutForm(context)
+                    ? LogoutFailure(context, StatusCodes.Status503ServiceUnavailable, "会话撤销服务暂不可用。")
+                    : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "会话撤销服务不可用");
             }
         }
 
@@ -595,10 +643,13 @@ app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient rev
             context.RequestAborted,
             TenantOidcRouting.ResolveIssuer(context.Request, issuer));
         await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        context.Response.Cookies.Append(AdminLogoutProof.CookieName,
+            context.RequestServices.GetRequiredService<AdminLogoutProof>().Create(DateTimeOffset.UtcNow),
+            AdminLogoutProof.CookieOptions);
 
         // RP 发起的前端登出：重定向到 IDP 的 end-session 端点（单点登出），再回 PostLogoutRedirectUri。
         return Results.SignOut(
-            new AuthenticationProperties { RedirectUri = "/admin/" },
+            new AuthenticationProperties { RedirectUri = "/admin/signed-out" },
             [OpenIddictClientAspNetCoreDefaults.AuthenticationScheme]);
     }));
 

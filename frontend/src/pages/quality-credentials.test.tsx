@@ -5,7 +5,7 @@ import { useNavigate, type NavigateFunction } from "react-router"
 import { useQueryClient, type QueryClient } from "@tanstack/react-query"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { Providers } from "@/test/utils"
-import { saveDraft } from "@/lib/drafts"
+import { bindDraftOwner, saveDraft } from "@/lib/drafts"
 import UsersPage from "./users"
 import ClientsPage from "./clients"
 
@@ -100,6 +100,7 @@ describe("credential and draft ownership", () => {
   })
 
   it.each(["u-1", "u-2"])("restores a step-up claim draft only for its owner (%s)", async (ownerId) => {
+    bindDraftOwner("fixture-owner")
     saveDraft("users.claim", { userId: ownerId, draft: { claimType: "panda:test", claimValue: "saved-value", scope: "api" } })
     vi.stubGlobal("fetch", usersFetch())
     render(<Providers initialEntries={["/?user=u-1"]}><UsersPage /></Providers>)

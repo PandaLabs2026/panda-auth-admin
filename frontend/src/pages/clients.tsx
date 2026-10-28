@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react"
+import { useAuthLeaveGuard } from "@/components/patterns/auth/context"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 
@@ -93,7 +94,12 @@ export default function ClientsPage() {
   const listError = listQuery.error ? serverError(listQuery.error) : null
   const options = optionsQuery.data ?? null
   const optionsError = optionsQuery.error ? serverError(optionsQuery.error) : null
+  const hydratedClient = useRef<string | null>(null)
   const selected = (clientId ? detailQuery.data : undefined) ?? null
+  useAuthLeaveGuard(Boolean(selected) && (redirectUris !== selected!.redirectUris.join("\n") ||
+    postLogoutUris !== selected!.postLogoutRedirectUris.join("\n") ||
+    JSON.stringify([...permissions].sort()) !== JSON.stringify([...selected!.permissions].sort())), "未保存的客户端配置")
+  useAuthLeaveGuard(busy, "进行中的客户端操作")
   const detailError = detailQuery.error ? serverError(detailQuery.error) : null
   const shownError = detailError
   const totalPages = list ? Math.max(1, Math.ceil(list.total / pageSize)) : 1
@@ -105,7 +111,8 @@ export default function ClientsPage() {
 
   // 详情落地(含保存后失效重取)同步表单;MFA step-up 草稿恢复(#26)带 clientId 匹配(consume 即弃)。
   useEffect(() => {
-    if (!detailQuery.data) return
+    if (!detailQuery.data || hydratedClient.current === detailQuery.data.clientId) return
+    hydratedClient.current = detailQuery.data.clientId
     const saved = consumeDraft<{ clientId: string; draft: ClientDraft }>("clients.form")
     if (saved && saved.clientId === detailQuery.data.clientId) {
       setRedirectUris(saved.draft.redirectUris)

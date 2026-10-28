@@ -1,3 +1,4 @@
+import { useAuthLeaveGuard } from "@/components/patterns/auth/context"
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useSearchParams } from "react-router"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
@@ -118,6 +119,10 @@ export default function UsersPage() {
   const [deactivateTarget, setDeactivateTarget] = useState<UserDetail | null>(null)
   const [deactivateInput, setDeactivateInput] = useState("")
   const [copied, setCopied] = useState(false)
+  useAuthLeaveGuard(creating && JSON.stringify(draft) !== JSON.stringify(EMPTY_CREATE), "未保存的建号表单")
+  useAuthLeaveGuard(editingProfile, "正在编辑的账号资料")
+  useAuthLeaveGuard(JSON.stringify(claimDraft) !== JSON.stringify(EMPTY_CLAIM), "未保存的账号声明")
+  useAuthLeaveGuard(busy || claimsBusy, "进行中的管理操作")
   useEffect(() => {
     setCopied(false)
     if (newPassword) passwordRef.current?.scrollIntoView({ behavior: "smooth", block: "center" })

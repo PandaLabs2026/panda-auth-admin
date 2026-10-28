@@ -1,12 +1,14 @@
+import { adminAuthLifecycle, markOperationUncertain } from "@/lib/auth-lifecycle"
 /**
  * BFF API 客户端：GET 直取；变更类先取防伪令牌（与 Cookie 成对校验）再发。
- * 401 统一折算为全页跳登录（会话过期/令牌被吊销/角色丢失），页面层无需各自处理。
+ * 401 通知共同认证边界合并复核，页面层不自行导航或重放。
  * 403 语义二分：只有 BFF 探测到上游 MFA 门禁标记（X-Panda-Mfa-Required）才跳 step-up，
  * 其余 403 是真正的权限拒绝，随一般错误路径展示，不再误导用户去 /account/mfa。
  */
 
 import { currentLocale, serverMessagesEn } from "@/i18n/config"
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout"
+import { notifySessionExpiry } from "@/lib/session-expiry"
 import { beginGrantFlow } from "@/lib/grant-flow"
 
 const MFA_REQUIRED_HEADER = "X-Panda-Mfa-Required"
@@ -33,7 +35,7 @@ export class GrantRequiredSignal extends Error {
 export class ApiError extends Error {
   readonly code?: string
 
-  constructor(message: string, code?: string) {
+  constructor(message: string, code?: string, readonly status?: number) {
     super(message)
     this.name = "ApiError"
     this.code = code
@@ -54,7 +56,7 @@ export async function problemDetailsError(response: Response): Promise<ApiError>
   } catch {
     // Keep the status fallback for empty or non-JSON failures.
   }
-  return new ApiError(detail, code)
+  return new ApiError(detail, code, response.status)
 }
 
 /** 错误渲染:en 下有码走 server 词典,无码/未知码/zh 显示服务端原文。 */
@@ -77,10 +79,9 @@ async function fetchAntiforgeryToken(): Promise<string> {
   )
 }
 
-/** 带 returnUrl 的登录跳转：重登后回到当前页面而非概览（BFF 端 LoginReturnUrl 白名单放行 /admin 前缀）。 */
+/** Delegate authentication recovery to the shared boundary. */
 function unauthorized(): never {
-  const returnUrl = encodeURIComponent(window.location.pathname + window.location.search)
-  window.location.assign(`/admin/login?returnUrl=${returnUrl}`)
+  notifySessionExpiry()
   throw new Error("unauthorized")
 }
 
@@ -116,38 +117,70 @@ export type Session = {
   portalHomeUrl: string | null
 }
 
+function requireActive(epoch = adminAuthLifecycle.epoch()) {
+  if (adminAuthLifecycle.paused() || epoch !== adminAuthLifecycle.epoch())
+    throw new ApiError("登录状态正在确认，请在确认后重新读取。")
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
-  return fetchWithTimeout(path, { headers: { "X-Requested-With": "XMLHttpRequest" } }, async (response) => {
+  const epoch = adminAuthLifecycle.epoch()
+  requireActive(epoch)
+  const result = await fetchWithTimeout(path, { headers: { "X-Requested-With": "XMLHttpRequest" } }, async (response) => {
     if (response.status === 401) unauthorized()
     if (!response.ok) throw await problemDetailsError(response)
     // 会话 Cookie 过期时 BFF 返回 302 → fetch 跟随重定向最终拿到登录页 HTML（200）：
-    // JSON 解析必然失败，统一折算为带 returnUrl 的登录跳转而不是莫名的解析报错。
+    // 非 JSON 成功响应作为服务错误，不误判为匿名或自动跳转。
     const contentType = response.headers.get("content-type") ?? ""
-    if (!contentType.includes("application/json")) unauthorized()
+    if (!contentType.includes("application/json")) throw new Error("服务返回了无效响应。")
     return (await response.json()) as T
   })
+  requireActive(epoch)
+  return result
 }
 
 export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+  const epoch = adminAuthLifecycle.epoch()
+  requireActive(epoch)
+  const release = adminAuthLifecycle.protect("进行中的管理操作")
+  try { return await sendAdmitted<T>(method, path, epoch, body) }
+  finally { release() }
+}
+
+async function sendAdmitted<T>(method: "POST" | "PUT" | "DELETE", path: string, epoch: number, body?: unknown): Promise<T> {
   const token = await fetchAntiforgeryToken()
   try {
-    return await rawSend<T>(method, path, body, token)
+    return await rawSend<T>(method, path, body, token, epoch)
   } catch (cause) {
     // 操作授权流（AUTH-DELIVERY-002）：403 授权标记 → 对话框签发 → 带授权头重放原请求。
     if (!(cause instanceof GrantRequiredSignal)) throw cause
+    requireActive(epoch)
     const grantId = await beginGrantFlow(cause)
-    return await rawSend<T>(method, path, body, token, grantId)
+    return await rawSend<T>(method, path, body, token, epoch, grantId)
   }
 }
 
-async function rawSend<T>(
+async function rawSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body: unknown | undefined, token: string, epoch: number, grantId?: string): Promise<T> {
+  requireActive(epoch)
+  try { return await rawSendCore<T>(method, path, body, token, epoch, grantId) }
+  catch (cause) {
+    const rejected = cause instanceof GrantRequiredSignal ||
+      cause instanceof ApiError && cause.status !== undefined && cause.status < 500 ||
+      cause instanceof Error && ["unauthorized", "mfa_required"].includes(cause.message)
+    if (!rejected) markOperationUncertain()
+    throw cause
+  }
+}
+
+async function rawSendCore<T>(
   method: "POST" | "PUT" | "DELETE",
   path: string,
   body: unknown | undefined,
   token: string,
+  epoch: number,
   grantId?: string,
 ): Promise<T> {
-  return fetchWithTimeout(
+  requireActive(epoch)
+  const result = await fetchWithTimeout(
     path,
     {
       method,
@@ -197,16 +230,18 @@ async function rawSend<T>(
         } catch {
           /* 保留状态码文案 */
         }
-        throw new ApiError(detail, code)
+        throw new ApiError(detail, code, response.status)
       }
       if (response.status === 204) return undefined as T
       // 与 apiGet 同款守卫：会话过期时防伪端点匿名可用（发令牌无需登录），随后的变更请求
       // 被 302 登录页 HTML——没有这道检查会变成莫名的解析错误。
       const contentType = response.headers.get("content-type") ?? ""
-      if (!contentType.includes("application/json")) unauthorized()
+      if (!contentType.includes("application/json")) throw new Error("服务返回了无效响应。")
       return (await response.json()) as T
     },
   )
+  requireActive(epoch)
+  return result
 }
 
 /** MFA 能力探针（BFF 转发 IDP 会话探针）：totpBound=false 时 SPA 全局绑定引导。 */

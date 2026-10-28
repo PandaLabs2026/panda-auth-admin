@@ -1,4 +1,5 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useAuthState } from "@/components/patterns/auth/context"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout"
 import { problemDetailsError } from "@/lib/api"
 
@@ -64,22 +65,30 @@ export function handleUnauthorized() {
 
 export const sessionApi = {
   /** 会话探测：未登录/会话失效（401 或 302→登录页 HTML）静默收敛为 null，守卫据此跳登录页。 */
-  async me(): Promise<Session | null> {
+  async me(signal?: AbortSignal): Promise<Session | null> {
     return fetchWithTimeout(
       "/admin/api/session",
-      { headers: { "X-Requested-With": "XMLHttpRequest" } },
+      { headers: { "X-Requested-With": "XMLHttpRequest" }, signal },
       async (res) => {
         if (res.status === 401) return null
         if (!res.ok) throw await problemDetailsError(res)
         const contentType = res.headers.get("content-type") ?? ""
-        if (!contentType.includes("application/json")) return null
-        return toSession((await res.json()) as BffSession)
+        if (!contentType.includes("application/json")) throw new Error("会话服务返回了无效响应。")
+        const raw: unknown = await res.json()
+        if (!raw || typeof raw !== "object") throw new Error("会话服务返回了无效响应。")
+        const value = raw as Record<string, unknown>
+        if (typeof value.subject !== "string" || !value.subject.trim() ||
+            !Array.isArray(value.roles) || !value.roles.every(role => typeof role === "string") ||
+            ["name", "email", "nickname", "portalHomeUrl"].some(key =>
+              value[key] !== null && typeof value[key] !== "string"))
+          throw new Error("会话服务返回了无效响应。")
+        return toSession(value as BffSession)
       },
       10_000,
     )
   },
 
-  /** 登出：防伪令牌成对 POST；BFF 的 end-session 重定向链被 fetch 静默跟随，必须显式整页回登录页。 */
+  /** Fetch only the antiforgery token; the native form owns the complete logout navigation. */
   async logout(): Promise<void> {
     const token = await fetchWithTimeout(
       "/admin/api/antiforgery",
@@ -90,33 +99,29 @@ export const sessionApi = {
       },
       10_000,
     )
-    await fetchWithTimeout(
-      "/admin/api/logout",
-      {
-        method: "POST",
-        headers: { "X-XSRF-Token": token, "X-Requested-With": "XMLHttpRequest" },
-      },
-      async (response) => {
-        if (!response.ok) throw await problemDetailsError(response)
-      },
-      10_000,
-    )
-    window.location.assign("/admin/login")
+    if (typeof token !== "string" || !token) throw new Error("退出请求缺少防伪凭据。")
+    const form = document.createElement("form")
+    form.method = "post"
+    form.action = "/admin/api/logout"
+    form.hidden = true
+    const field = document.createElement("input")
+    field.type = "hidden"
+    field.name = "__RequestVerificationToken"
+    field.value = token
+    form.append(field)
+    document.body.append(form)
+    try { HTMLFormElement.prototype.submit.call(form) }
+    finally { form.remove() }
   },
 }
 
 /** 会话查询：无会话=null（守卫据此跳登录），Query 缓存取代旧模块级 Promise 单飞。 */
 export function useSession() {
-  return useQuery({ queryKey: ["session"], queryFn: sessionApi.me, staleTime: 60_000, retry: false })
+  const auth = useAuthState()
+  return useQuery({ enabled: !auth.lifecycle, queryKey: ["session"], queryFn: ({ signal }) => sessionApi.me(signal), staleTime: 60_000, retry: false })
 }
 
 export function useLogout() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () => sessionApi.logout(),
-    onSuccess: () => {
-      qc.setQueryData(["session"], null)
-      qc.clear()
-    },
-  })
+  const auth = useAuthState()
+  return useMutation({ mutationFn: () => auth.lifecycle ? auth.logout() : sessionApi.logout() })
 }

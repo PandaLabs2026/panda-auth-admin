@@ -31,6 +31,15 @@ public class LoginReturnUrlTests
     [InlineData("/admin/..//evil.com")]
     [InlineData("/admin/../users")]
     // 空值与空白。
+    [InlineData("/admin/login")]
+    [InlineData("/admin/challenge?returnUrl=/admin/users")]
+    [InlineData("/admin/callback/login/pandaauth")]
+    [InlineData("/admin/api/users")]
+    [InlineData("/admin/signed-out")]
+    [InlineData("/admin/%2e%2e/users")]
+    [InlineData("/admin/%252e%252e/users")]
+    [InlineData("/admin/users#token")]
+    [InlineData("/admin/users?x=%0d%0aLocation:evil")]
     [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
@@ -42,6 +51,7 @@ public class LoginReturnUrlTests
     [Theory]
     // 正常的站内回跳：带查询串也要原样保留（丢失查询串等于悄悄改变用户目的地）。
     [InlineData("/admin/users?x=1")]
+    [InlineData("/admin/users?q=%E4%B8%AD%E6%96%87&page=2")]
     [InlineData("/admin/")]
     [InlineData("/admin")]
     [InlineData("/admin/users")]

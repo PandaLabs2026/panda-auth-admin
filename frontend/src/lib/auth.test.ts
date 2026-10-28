@@ -20,26 +20,35 @@ describe("sessionApi", () => {
     await expect(sessionApi.me()).rejects.toThrow("会话检查暂不可用。")
   })
 
-  it("reports failed logout responses and does not navigate to the login page", async () => {
-    const assign = vi.fn()
-    const originalWindow = window
-    vi.stubGlobal("window", {
-      location: { assign },
-      setTimeout: originalWindow.setTimeout.bind(originalWindow),
-      clearTimeout: originalWindow.clearTimeout.bind(originalWindow),
-    })
-    vi.stubGlobal("fetch", vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ token: "csrf" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      }))
-      .mockResolvedValueOnce(new Response(JSON.stringify({
-        status: 503, title: "Unavailable", detail: "会话撤销服务不可用",
-      }), {
-        status: 503,
-        headers: { "content-type": "application/problem+json" },
-      })))
-    await expect(sessionApi.logout()).rejects.toThrow("会话撤销服务不可用")
-    expect(assign).not.toHaveBeenCalled()
+  it("keeps the page when the antiforgery request fails", async () => {
+    const submit = vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {})
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(JSON.stringify({ detail: "退出暂不可用" }), { status: 503, headers: { "content-type": "application/problem+json" } }))))
+    await expect(sessionApi.logout()).rejects.toThrow("退出暂不可用")
+    expect(submit).not.toHaveBeenCalled()
+  })
+
+  it("submits logout as a native antiforgery form without following redirects in fetch", async () => {
+    let submitted: HTMLFormElement | undefined
+    vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(function (this: HTMLFormElement) { submitted = this })
+    const fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ token: "fixture-csrf" }), { headers: { "content-type": "application/json" } })))
+    vi.stubGlobal("fetch", fetch)
+    await sessionApi.logout()
+    expect(fetch).toHaveBeenCalledOnce()
+    expect(submitted?.getAttribute("action")).toBe("/admin/api/logout")
+    expect(submitted?.method).toBe("post")
+    expect(submitted?.querySelector<HTMLInputElement>('input[name="__RequestVerificationToken"]')?.value).toBe("fixture-csrf")
+  })
+
+})
+
+
+describe("session response validation", () => {
+  it.each([
+    ["text/html", "<html>upstream error</html>"],
+    ["application/json", JSON.stringify({ subject: "", roles: [] })],
+    ["application/json", JSON.stringify({ subject: "user", roles: "admin" })],
+  ])("rejects malformed successful responses (%s)", async (contentType, body) => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(body, { headers: { "content-type": contentType } }))))
+    await expect(sessionApi.me()).rejects.toThrow()
   })
 })
