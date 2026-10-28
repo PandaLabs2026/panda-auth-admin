@@ -1,4 +1,4 @@
-import { adminAuthLifecycle } from "@/lib/auth-lifecycle"
+import { adminAuthLifecycle, markOperationUncertain } from "@/lib/auth-lifecycle"
 /**
  * BFF API 客户端：GET 直取；变更类先取防伪令牌（与 Cookie 成对校验）再发。
  * 401 统一折算为全页跳登录（会话过期/令牌被吊销/角色丢失），页面层无需各自处理。
@@ -157,7 +157,19 @@ async function sendAdmitted<T>(method: "POST" | "PUT" | "DELETE", path: string, 
   }
 }
 
-async function rawSend<T>(
+async function rawSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body: unknown | undefined, token: string, grantId?: string): Promise<T> {
+  requireActive()
+  try { return await rawSendCore<T>(method, path, body, token, grantId) }
+  catch (cause) {
+    const rejected = cause instanceof GrantRequiredSignal ||
+      cause instanceof ApiError && cause.status !== undefined && cause.status < 500 ||
+      cause instanceof Error && ["unauthorized", "mfa_required"].includes(cause.message)
+    if (!rejected) markOperationUncertain()
+    throw cause
+  }
+}
+
+async function rawSendCore<T>(
   method: "POST" | "PUT" | "DELETE",
   path: string,
   body: unknown | undefined,
@@ -216,7 +228,7 @@ async function rawSend<T>(
         } catch {
           /* 保留状态码文案 */
         }
-        throw new ApiError(detail, code)
+        throw new ApiError(detail, code, response.status)
       }
       if (response.status === 204) return undefined as T
       // 与 apiGet 同款守卫：会话过期时防伪端点匿名可用（发令牌无需登录），随后的变更请求

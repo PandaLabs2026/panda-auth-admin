@@ -19,3 +19,19 @@ it("rejects a response from the previous authentication epoch", async () => {
   resolve(new Response("{}", { headers: { "content-type": "application/json" } }))
   await expect(pending).rejects.toThrow()
 })
+it("does not mark a write uncertain when antiforgery acquisition fails before sending", async () => {
+  const fetch = vi.fn(() => Promise.reject(new TypeError("connection lost")))
+  vi.stubGlobal("fetch", fetch)
+  await expect(apiSend("POST", "/admin/api/users", {})).rejects.toThrow()
+  expect(adminAuthLifecycle.reasons()).not.toContain("结果待核实的管理操作")
+  expect(fetch).toHaveBeenCalledOnce()
+})
+it("retains an uncertainty guard after a mutation loses its response without replay", async () => {
+  const fetch = vi.fn((path: string) => path === "/admin/api/antiforgery"
+    ? Promise.resolve(new Response('{"token":"fixture"}', { headers: { "content-type": "application/json" } }))
+    : Promise.reject(new TypeError("connection lost")))
+  vi.stubGlobal("fetch", fetch)
+  await expect(apiSend("POST", "/admin/api/users", {})).rejects.toThrow()
+  expect(adminAuthLifecycle.reasons()).toContain("结果待核实的管理操作")
+  expect(fetch).toHaveBeenCalledTimes(2)
+})
