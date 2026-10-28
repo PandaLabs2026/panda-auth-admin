@@ -1,3 +1,4 @@
+import { useAuthState } from "@/components/patterns/auth/context"
 import type { ReactNode } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { Button } from "@/components/ui/button"
@@ -14,6 +15,7 @@ import { useI18n } from "@/lib/i18n"
  * 同时挂载操作授权对话框宿主：高风险操作 403 授权标记 → 页内 TOTP(+密码) 验证 → 带头重放。
  */
 export function SessionGate({ children }: { children: ReactNode }) {
+  const auth = useAuthState()
   const session = useSession()
   const { t } = useI18n()
   const capability = useQuery({
@@ -60,10 +62,8 @@ export function SessionGate({ children }: { children: ReactNode }) {
     )
   }
 
-  return (
-    <RequireAuth>
-      {children}
-      <GrantDialogHost />
-    </RequireAuth>
-  )
+  const content = <>{children}<GrantDialogHost /></>
+  // The shared boundary owns admission and retains protected drafts while hidden.
+  // A nested legacy redirect would destroy that retained subtree during recheck.
+  return auth.lifecycle ? content : <RequireAuth>{content}</RequireAuth>
 }
