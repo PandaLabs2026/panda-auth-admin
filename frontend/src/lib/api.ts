@@ -7,6 +7,7 @@
 
 import { currentLocale, serverMessagesEn } from "@/i18n/config"
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout"
+import { notifySessionExpiry } from "@/lib/session-expiry"
 import { beginGrantFlow } from "@/lib/grant-flow"
 
 const MFA_REQUIRED_HEADER = "X-Panda-Mfa-Required"
@@ -79,8 +80,7 @@ async function fetchAntiforgeryToken(): Promise<string> {
 
 /** 带 returnUrl 的登录跳转：重登后回到当前页面而非概览（BFF 端 LoginReturnUrl 白名单放行 /admin 前缀）。 */
 function unauthorized(): never {
-  const returnUrl = encodeURIComponent(window.location.pathname + window.location.search)
-  window.location.assign(`/admin/login?returnUrl=${returnUrl}`)
+  notifySessionExpiry()
   throw new Error("unauthorized")
 }
 
@@ -123,7 +123,7 @@ export async function apiGet<T>(path: string): Promise<T> {
     // 会话 Cookie 过期时 BFF 返回 302 → fetch 跟随重定向最终拿到登录页 HTML（200）：
     // JSON 解析必然失败，统一折算为带 returnUrl 的登录跳转而不是莫名的解析报错。
     const contentType = response.headers.get("content-type") ?? ""
-    if (!contentType.includes("application/json")) unauthorized()
+    if (!contentType.includes("application/json")) throw new Error("服务返回了无效响应。")
     return (await response.json()) as T
   })
 }
@@ -203,7 +203,7 @@ async function rawSend<T>(
       // 与 apiGet 同款守卫：会话过期时防伪端点匿名可用（发令牌无需登录），随后的变更请求
       // 被 302 登录页 HTML——没有这道检查会变成莫名的解析错误。
       const contentType = response.headers.get("content-type") ?? ""
-      if (!contentType.includes("application/json")) unauthorized()
+      if (!contentType.includes("application/json")) throw new Error("服务返回了无效响应。")
       return (await response.json()) as T
     },
   )
