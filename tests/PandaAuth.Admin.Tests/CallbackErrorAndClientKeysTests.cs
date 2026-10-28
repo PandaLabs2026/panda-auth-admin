@@ -152,6 +152,7 @@ public class CallbackErrorAndClientKeysTests
         using var client = factory.CreateClient();
 
         using var denied = await client.GetAsync("/admin/challenge?error=access_denied");
+        Assert.Contains("PandaAuth by PandaLabs", await denied.Content.ReadAsStringAsync());
         Assert.Equal(HttpStatusCode.OK, denied.StatusCode);
         Assert.Equal("text/html", denied.Content.Headers.ContentType?.MediaType);
         var body = await denied.Content.ReadAsStringAsync();

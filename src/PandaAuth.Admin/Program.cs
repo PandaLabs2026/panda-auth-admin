@@ -400,17 +400,8 @@ app.MapGet("/admin/challenge", (string? returnUrl, string? error) =>
 {
     if (!string.IsNullOrEmpty(error))
     {
-        var sanitized = LoginReturnUrl.Sanitize(returnUrl);
-        // 重试链接保留已白名单化的 returnUrl（相对引用语义，消费点仍是本端点的 Sanitize）。
-        var retryHref = "/admin/login" + (sanitized == LoginReturnUrl.Fallback
-            ? string.Empty
-            : "?returnUrl=" + Uri.EscapeDataString(sanitized));
-        return Results.Content(
-            "<!doctype html><html lang=\"zh\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
-            "<title>登录失败</title><body style=\"font-family:system-ui;padding:3rem;max-width:40rem\">" +
-            $"<h1 style=\"font-size:1.25rem\">登录失败</h1><p style=\"line-height:1.8\">{LoginError.Describe(error)}</p>" +
-            $"<p><a href=\"{retryHref}\">重试登录</a>　<a href=\"/admin/\">回到首页</a></p>" +
-            "</body></html>",
+        return Results.Content(AdminAuthPage.Render("登录失败", [LoginError.Describe(error),
+            "请明确选择重试；若持续失败，请联系管理员。"], false, returnUrl, "重试登录"),
             "text/html; charset=utf-8");
     }
 
@@ -455,8 +446,7 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
             context.Request.Host.Host);
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         return Results.Content(
-            "<!doctype html><html lang=\"zh\"><meta charset=\"utf-8\"><title>403</title>" +
-            "<body style=\"font-family:system-ui;padding:3rem\">租户入口与登录上下文不匹配。</body></html>",
+            AdminAuthPage.Render("无法进入管理后台", ["租户入口与登录上下文不匹配。"], false),
             "text/html; charset=utf-8");
     }
 
@@ -471,8 +461,7 @@ app.MapGet("/admin/callback/login/{provider}", async (HttpContext context) =>
             context.Connection.RemoteIpAddress);
         context.Response.StatusCode = StatusCodes.Status403Forbidden;
         return Results.Content(
-            "<!doctype html><html lang=\"zh\"><meta charset=\"utf-8\"><title>403</title>" +
-            "<body style=\"font-family:system-ui;padding:3rem\">该账号没有管理后台权限。</body></html>",
+            AdminAuthPage.Render("无法进入管理后台", ["该账号没有管理后台权限。"], false),
             "text/html; charset=utf-8");
     }
 
