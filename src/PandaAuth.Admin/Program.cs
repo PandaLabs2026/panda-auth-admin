@@ -378,6 +378,21 @@ app.UseMiddleware<SecurityHeadersMiddleware>();
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseMiddleware<TenantHostContextMiddleware>();
+// A native logout form must stop on missing admission, never challenge back into login.
+// Authorized requests still pass through the unchanged fallback policy and antiforgery guard.
+app.Use(async (context, next) =>
+{
+    if (IsNativeLogoutForm(context) && (context.User.Identity?.IsAuthenticated != true ||
+        !context.User.HasClaim(Claims.Role, PandaAuthRoles.Admin)))
+    {
+        var status = context.User.Identity?.IsAuthenticated == true
+            ? StatusCodes.Status403Forbidden : StatusCodes.Status401Unauthorized;
+        await LogoutFailure(context, status, "当前登录状态无法完成退出，请明确选择后续操作。")
+            .ExecuteAsync(context);
+        return;
+    }
+    await next(context);
+});
 app.UseAuthorization();
 // 限流中间件：基于端点元数据（RequireRateLimiting）生效，须在认证之后（限流分区取真实 IP 依赖
 // ForwardedHeaders 已处理）、端点执行之前。
