@@ -93,9 +93,17 @@ public sealed class SsoSessionRuntimeTests
         state.RevokeUnavailable = true;
         using (var failedRequest = new HttpRequestMessage(HttpMethod.Post, "/admin/api/logout"))
         {
-            failedRequest.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
+            if (nativeForm)
+                failedRequest.Content = new FormUrlEncodedContent(new Dictionary<string, string> {
+                    ["__RequestVerificationToken"] = payload.GetProperty("token").GetString()!
+                });
+            else failedRequest.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
             using var failed = await client.SendAsync(failedRequest);
             Assert.Equal(HttpStatusCode.ServiceUnavailable, failed.StatusCode);
+            if (nativeForm) {
+                Assert.Equal("text/html", failed.Content.Headers.ContentType?.MediaType);
+                Assert.Contains("退出未完成", await failed.Content.ReadAsStringAsync());
+            }
         }
         using (var retryable = await client.GetAsync("/admin/api/session"))
             Assert.Equal(HttpStatusCode.OK, retryable.StatusCode);

@@ -551,6 +551,22 @@ static string NormalizeRouteValue(string value) => Uri.UnescapeDataString(value)
 
 // 变更类端点的防伪样板收敛：此前逐端点抄 try/catch（加端点 = 再抄一段，漏抄一段 = 该端点
 // CSRF 裸奔）。端点只声明业务转发参数；防伪失败统一 400，行为与收敛前一致。
+static bool IsNativeLogoutForm(HttpContext context) =>
+    context.Request.Path == "/admin/api/logout" && context.Request.HasFormContentType &&
+    context.Request.Headers["X-Requested-With"] != "XMLHttpRequest";
+
+static IResult LogoutFailure(HttpContext context, int status, string detail)
+{
+    context.Response.Headers.CacheControl = "no-store";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    return Results.Content(
+        "<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>退出未完成 · PandaAuth</title></head>" +
+        "<body><main><h1>退出未完成</h1><p>" + System.Net.WebUtility.HtmlEncode(detail) +
+        "</p><p>当前会话未确认已注销。请返回管理台重新发起退出；此页面不会自动重试。</p>" +
+        "<a href=\"/admin/\">返回管理台</a></main></body></html>",
+        "text/html; charset=utf-8", statusCode: status);
+}
+
 async Task<IResult> WithAntiforgeryAsync(HttpContext ctx, Func<Task<IResult>> handler)
 {
     try
@@ -559,7 +575,9 @@ async Task<IResult> WithAntiforgeryAsync(HttpContext ctx, Func<Task<IResult>> ha
     }
     catch (AntiforgeryValidationException)
     {
-        return Results.BadRequest();
+        return IsNativeLogoutForm(ctx)
+            ? LogoutFailure(ctx, StatusCodes.Status400BadRequest, "退出请求已失效，请重新发起。")
+            : Results.BadRequest();
     }
 
     return await handler();
@@ -595,7 +613,9 @@ app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient rev
             }
             catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or InvalidOperationException)
             {
-                return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "会话撤销服务不可用");
+                return IsNativeLogoutForm(context)
+                    ? LogoutFailure(context, StatusCodes.Status503ServiceUnavailable, "会话撤销服务暂不可用。")
+                    : Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable, title: "会话撤销服务不可用");
             }
         }
 
