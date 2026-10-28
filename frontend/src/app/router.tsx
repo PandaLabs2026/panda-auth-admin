@@ -16,7 +16,7 @@ import { notify } from "@/lib/notify"
 
 /**
  * 路由(模板 v0.5.0 形态):/login 独立无布局,其余挂在 AppLayout(侧栏+固定顶栏)
- * 与 RequireAuth 守卫之下;403/500/404 错误页入册。页面 lazy() 拆 chunk,
+ * 与共同 AuthBoundary、管理权限门之下;403/500/404 错误页入册。页面 lazy() 拆 chunk,
  * Suspense 骨架与正式布局同锚点顶对齐。basename 跟随 Vite base(/admin/)。
  */
 

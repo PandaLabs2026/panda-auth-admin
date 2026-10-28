@@ -20,18 +20,34 @@ public static class BrowserEntry
         var request = new CertificateRequest("CN=localhost", key, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
         using var certificate = X509CertificateLoader.LoadPkcs12(request.CreateSelfSigned(
             DateTimeOffset.UtcNow.AddMinutes(-1), DateTimeOffset.UtcNow.AddHours(1)).Export(X509ContentType.Pfx), null);
+        await using var identity = new FixtureIdentity();
+        await identity.StartAsync(certificate);
         await using var factory = new WebApplicationFactory<global::Program>().WithWebHostBuilder(builder =>
         {
             builder.UseContentRoot(Path.Combine(root, "src/PandaAuth.Admin"));
             builder.UseEnvironment("Development");
+            builder.UseSetting("Auth:Issuer", identity.Issuer);
+            builder.UseSetting("Auth:IdpInternalBaseAddress", identity.Issuer);
+            builder.UseSetting("Auth:ClientId", "admin-web");
             builder.UseSetting("Auth:ClientSecret", "browser-fixture-only");
             builder.UseSetting("Auth:SessionState:ClientSecret", "browser-fixture-session-only");
             builder.ConfigureLogging(logging => logging.ClearProviders());
+            builder.ConfigureServices(services => {
+                HttpClientHandler Handler() => new() { ServerCertificateCustomValidationCallback = (message, cert, _, _) =>
+                    message.RequestUri?.IsLoopback == true && cert?.GetCertHashString() == certificate.GetCertHashString() };
+                services.AddOpenIddict().AddClient(options => options.UseSystemNetHttp().ConfigureHttpClientHandler(handler => {
+                    handler.ServerCertificateCustomValidationCallback = (message, cert, _, _) => message.RequestUri?.IsLoopback == true && cert?.GetCertHashString() == certificate.GetCertHashString();
+                }));
+                services.AddHttpClient<PandaAuth.Admin.AdminApiProxy>().ConfigurePrimaryHttpMessageHandler(Handler);
+                services.AddHttpClient<PandaAuth.Admin.TokenRevocationClient>().ConfigurePrimaryHttpMessageHandler(Handler);
+                services.AddHttpClient("session-state").ConfigurePrimaryHttpMessageHandler(Handler);
+            });
         });
         factory.UseKestrel(options => options.Listen(IPAddress.Loopback, 0, listener => listener.UseHttps(certificate)));
         factory.StartServer();
         var origin = factory.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>()!.Addresses.Single();
-        File.WriteAllText(args[1], JsonSerializer.Serialize(new { origin, fixture = "admin-browser-https" }));
+        identity.ClientOrigin = origin;
+        File.WriteAllText(args[1], JsonSerializer.Serialize(new { origin, issuer = identity.Issuer, fixture = "admin-browser-https" }));
         using var stop = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; stop.Cancel(); };
         try { await Task.Delay(Timeout.Infinite, stop.Token); } catch (OperationCanceledException) { }

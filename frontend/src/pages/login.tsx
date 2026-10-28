@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { useI18n } from "@/lib/i18n"
+import { adminAuthNavigation } from "@/lib/auth-lifecycle"
 
 /**
  * 管理后台品牌登录页(由 BFF 的 SPA 回退承载,挑战端点在 /admin/challenge)。
@@ -14,9 +15,9 @@ import { useI18n } from "@/lib/i18n"
  * `/admin/callback/login/pandaauth`:具备 admin 角色则建立会话并落到 returnUrl 或 `/admin/`,
  * 否则 403(角色门禁在 BFF 回调处强制,见 Program.cs)。
  *
- * 带 returnUrl 到达(api 层 401 重登与 RequireAuth 守卫回跳的最常见形态;后者经
- * location.state.from——两处来源归一到同一 returnUrl)时自动发起挑战,免一次点击、
- * 保持「会话过期 → 重登 → 回原页」的无缝体验;直接访问或带 error 到达(异常路径)时
+ * 兼容旧登录链接中的 returnUrl 与 RequireAuth 回跳；后者经
+ * location.state.from 传递。自动挑战复用共同导航防循环标记，
+ * 保留回跳路径；直接访问、自动尝试受阻或带 error 到达时
  * 停在品牌页由用户显式点击,避免系统性故障下对 IDP 的自动重试。
  *
  * 刻意**不**用 XHR 发起:挑战是一次跨站重定向流(本站 → IDP → 本站),
@@ -32,21 +33,18 @@ export default function LoginPage() {
   const returnUrl = searchParams.get("returnUrl") ?? (stateFrom && stateFrom.startsWith("/") ? stateFrom : "")
   const hasError = searchParams.has("error")
   const [leaving, setLeaving] = useState(false)
+  const [blocked, setBlocked] = useState(false)
 
   useEffect(() => {
     if (returnUrl && !hasError) {
-      setLeaving(true)
-      window.location.assign(`/admin/challenge?returnUrl=${encodeURIComponent(returnUrl)}`)
+      const started = adminAuthNavigation.start(returnUrl)
+      setLeaving(started)
+      setBlocked(!started)
     }
   }, [returnUrl, hasError])
 
   const startLogin = () => {
-    setLeaving(true)
-    window.location.assign(
-      returnUrl
-        ? `/admin/challenge?returnUrl=${encodeURIComponent(returnUrl)}`
-        : "/admin/challenge",
-    )
+    setLeaving(adminAuthNavigation.start(returnUrl || adminAuthNavigation.home, true))
   }
 
   return (
@@ -69,7 +67,7 @@ export default function LoginPage() {
             <CardDescription>{t("仅限熊猫实验室管理员，使用 PandaAuth 账号登录。")}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-3">
-            {hasError && (
+            {(hasError || blocked) && (
               <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {t("登录未完成，请重试；若持续出现请联系管理员。")}
               </p>
