@@ -36,6 +36,7 @@ RUN dotnet publish panda-auth-admin/src/PandaAuth.Admin -c Release -o /app --no-
 # ================= 运行阶段 =================
 # .NET/ASP.NET 安全补丁 10.0.13；与 Server 共用不可变运行时基线（2026-10-22 核验）。
 FROM mcr.microsoft.com/dotnet/aspnet:10.0.13@sha256:d5633778c754e89a386882eddf8dbee6942447a8a4b8267c19cf1e1158d0b0ac AS runtime
+LABEL org.opencontainers.image.source="https://github.com/PandaLabs2026/panda-auth-admin"
 LABEL cc.pandalabs.auth.schema-floor="online-signing-v1"
 RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
