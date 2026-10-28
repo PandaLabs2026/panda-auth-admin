@@ -28,12 +28,13 @@ describe("sessionApi", () => {
   })
 
   it("submits logout as a native antiforgery form without following redirects in fetch", async () => {
-    let submitted: HTMLFormElement | undefined
-    vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(function (this: HTMLFormElement) { submitted = this })
+    const submit = vi.spyOn(HTMLFormElement.prototype, "submit").mockImplementation(() => {})
     const fetch = vi.fn(() => Promise.resolve(new Response(JSON.stringify({ token: "fixture-csrf" }), { headers: { "content-type": "application/json" } })))
     vi.stubGlobal("fetch", fetch)
     await sessionApi.logout()
     expect(fetch).toHaveBeenCalledOnce()
+    expect(submit).toHaveBeenCalledOnce()
+    const submitted = submit.mock.contexts[0] as HTMLFormElement
     expect(submitted?.getAttribute("action")).toBe("/admin/api/logout")
     expect(submitted?.method).toBe("post")
     expect(submitted?.querySelector<HTMLInputElement>('input[name="__RequestVerificationToken"]')?.value).toBe("fixture-csrf")
