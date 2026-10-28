@@ -1,3 +1,4 @@
+import { bindDraftOwner } from "@/lib/drafts"
 import { useEffect, useMemo, type ReactNode } from "react"
 import { useLocation } from "react-router"
 import { useQueryClient } from "@tanstack/react-query"
@@ -15,6 +16,7 @@ export default function AdminAuthBoundary({ children }: { children: ReactNode })
     status: error => error instanceof ApiError ? error.status ?? 0 : 0,
     async logout() { await sessionApi.logout(); return { kind: "navigation" } },
     sessionChanged(session) {
+      bindDraftOwner(session?.subject)
       const previous = client.getQueryData<Session | null>(["session"])
       if (previous?.subject !== session?.subject) {
         void client.cancelQueries({ predicate: query => query.queryKey[0] !== "session" })

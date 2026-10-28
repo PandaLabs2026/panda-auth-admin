@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest"
-import { consumeDraft, saveDraftWithoutPassword, withoutPassword } from "./drafts"
+import { afterEach, beforeEach, describe, expect, it } from "vitest"
+import { bindDraftOwner, saveDraft, consumeDraft, saveDraftWithoutPassword, withoutPassword } from "./drafts"
 
+beforeEach(() => bindDraftOwner("fixture-owner"))
 afterEach(() => sessionStorage.clear())
 
 describe("saveDraftWithoutPassword", () => {
@@ -24,4 +25,15 @@ describe("saveDraftWithoutPassword", () => {
       password: "",
     })
   })
+})
+
+it("does not restore a draft saved by another operator", () => {
+  saveDraft("users.claim", { value: "operator A" })
+  bindDraftOwner("other-operator")
+  expect(consumeDraft("users.claim")).toBeNull()
+})
+it("keeps an approved draft across authentication for the same operator", () => {
+  saveDraft("users.claim", { value: "same operator" })
+  bindDraftOwner("fixture-owner")
+  expect(consumeDraft("users.claim")).toEqual({ value: "same operator" })
 })
