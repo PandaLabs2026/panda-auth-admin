@@ -565,6 +565,17 @@ async Task<IResult> WithAntiforgeryAsync(HttpContext ctx, Func<Task<IResult>> ha
     return await handler();
 }
 
+// A terminal page is public and never starts a new authentication challenge.
+// Direct visits are not evidence that local or identity-provider logout completed.
+app.MapGet("/admin/signed-out", () => Results.Content(
+    "<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>退出状态 · PandaAuth</title></head>" +
+    "<body><main><img src=\"/admin/pandaauth-logo-horizontal.png\" alt=\"PandaAuth by PandaLabs\" width=\"240\"><h1>退出状态</h1>" +
+    "<p>当前页面未确认本应用或身份中心的退出结果。关联应用的退出范围以身份服务实际结果为准。</p>" +
+    "<p>如需重新进入管理台，请明确选择继续登录。</p><a href=\"/admin/login\">继续登录</a></main></body></html>",
+    "text/html; charset=utf-8")).AllowAnonymous();
+
+app.MapGet("/admin/callback/logout/{provider}", () => Results.Redirect("/admin/signed-out")).AllowAnonymous();
+
 // 登出：防伪校验 → 撤销 IDP 令牌（尽力而为）→ 清本地会话 → RP 端到端登出（end-session）。
 // 不匿名豁免：登出只对已登录会话有意义；匿名 POST 由 FallbackPolicy 拦下（302，前端仅在有会话时调用）。
 app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient revocationClient, AdminSessionLifecycle sessionLifecycle, IAdminSessionState sessionStateClient) =>
@@ -598,7 +609,7 @@ app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient rev
 
         // RP 发起的前端登出：重定向到 IDP 的 end-session 端点（单点登出），再回 PostLogoutRedirectUri。
         return Results.SignOut(
-            new AuthenticationProperties { RedirectUri = "/admin/" },
+            new AuthenticationProperties { RedirectUri = "/admin/signed-out" },
             [OpenIddictClientAspNetCoreDefaults.AuthenticationScheme]);
     }));
 

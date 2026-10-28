@@ -248,6 +248,20 @@ public class RouteGuardTests
     }
 
     [Fact]
+    public async Task SignedOut_IsAnonymousTerminal_WithoutAutomaticLogin()
+    {
+        using var factory = new GuardFactory(authenticated: false);
+        using var client = factory.CreateClient();
+        using var response = await client.GetAsync("/admin/signed-out");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var html = await response.Content.ReadAsStringAsync();
+        Assert.Contains("退出状态", html);
+        Assert.Contains("/admin/login", html);
+        Assert.DoesNotContain("http-equiv=\"refresh\"", html);
+        Assert.Contains("未确认", html);
+    }
+
+    [Fact]
     public async Task AntiforgeryEndpoint_ReturnsToken()
     {
         using var factory = new GuardFactory(authenticated: false);
