@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button"
 import GrantDialogHost from "@/components/grant-dialog-host"
 import RequireAuth from "@/components/patterns/RequireAuth"
 import { useSession } from "@/lib/auth"
-import { apiGet, type MfaCapability } from "@/lib/api"
+import { apiGet, ApiError, type MfaCapability } from "@/lib/api"
 import { useI18n } from "@/lib/i18n"
 
 /**
@@ -26,6 +26,13 @@ export function SessionGate({ children }: { children: ReactNode }) {
     throwOnError: false,
   })
 
+  if (session.isError && session.error instanceof ApiError && session.error.status === 403) {
+    return <div className="flex flex-col items-start gap-3 pt-2" role="alert">
+      <p>{t("无权访问管理后台")}</p>
+      <Button variant="outline" onClick={() => void session.refetch()}>{t("重试")}</Button>
+    </div>
+  }
+
   if (session.isError) {
     return (
       <div className="flex flex-col items-start gap-3 pt-2" role="alert">
@@ -33,6 +40,10 @@ export function SessionGate({ children }: { children: ReactNode }) {
         <Button variant="outline" onClick={() => void session.refetch()}>{t("重试")}</Button>
       </div>
     )
+  }
+
+  if (session.data && capability.isPending) {
+    return <div className="pt-2 text-sm text-muted-foreground" role="status">{t("正在确认管理权限…")}</div>
   }
 
   if (session.isSuccess && capability.isSuccess && capability.data?.totpBound === false) {

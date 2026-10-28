@@ -249,5 +249,7 @@
   "请先绑定 TOTP 验证器": "Please bind a TOTP authenticator first",
   "管理员须以密码＋TOTP 使用管理台；绑定前管理操作不可用。完成绑定后返回本页继续。": "Admins must sign in with a password and TOTP. Management actions are unavailable until you bind one. Return to this page after binding.",
   "前往绑定 TOTP": "Bind TOTP",
-  "验证中…": "Verifying..."
+  "验证中…": "Verifying...",
+  "无权访问管理后台": "You do not have permission to access the administration console.",
+  "正在确认管理权限…": "Checking administration access…"
 }

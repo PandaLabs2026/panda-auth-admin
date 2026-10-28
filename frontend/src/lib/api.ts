@@ -34,7 +34,7 @@ export class GrantRequiredSignal extends Error {
 export class ApiError extends Error {
   readonly code?: string
 
-  constructor(message: string, code?: string) {
+  constructor(message: string, code?: string, readonly status?: number) {
     super(message)
     this.name = "ApiError"
     this.code = code
@@ -55,7 +55,7 @@ export async function problemDetailsError(response: Response): Promise<ApiError>
   } catch {
     // Keep the status fallback for empty or non-JSON failures.
   }
-  return new ApiError(detail, code)
+  return new ApiError(detail, code, response.status)
 }
 
 /** 错误渲染:en 下有码走 server 词典,无码/未知码/zh 显示服务端原文。 */
