@@ -72,8 +72,16 @@ export const sessionApi = {
         if (res.status === 401) return null
         if (!res.ok) throw await problemDetailsError(res)
         const contentType = res.headers.get("content-type") ?? ""
-        if (!contentType.includes("application/json")) return null
-        return toSession((await res.json()) as BffSession)
+        if (!contentType.includes("application/json")) throw new Error("会话服务返回了无效响应。")
+        const raw: unknown = await res.json()
+        if (!raw || typeof raw !== "object") throw new Error("会话服务返回了无效响应。")
+        const value = raw as Record<string, unknown>
+        if (typeof value.subject !== "string" || !value.subject.trim() ||
+            !Array.isArray(value.roles) || !value.roles.every(role => typeof role === "string") ||
+            ["name", "email", "nickname", "portalHomeUrl"].some(key =>
+              value[key] !== null && typeof value[key] !== "string"))
+          throw new Error("会话服务返回了无效响应。")
+        return toSession(value as BffSession)
       },
       10_000,
     )

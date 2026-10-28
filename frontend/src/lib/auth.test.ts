@@ -43,3 +43,15 @@ describe("sessionApi", () => {
     expect(assign).not.toHaveBeenCalled()
   })
 })
+
+
+describe("session response validation", () => {
+  it.each([
+    ["text/html", "<html>upstream error</html>"],
+    ["application/json", JSON.stringify({ subject: "", roles: [] })],
+    ["application/json", JSON.stringify({ subject: "user", roles: "admin" })],
+  ])("rejects malformed successful responses (%s)", async (contentType, body) => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(body, { headers: { "content-type": contentType } }))))
+    await expect(sessionApi.me()).rejects.toThrow()
+  })
+})

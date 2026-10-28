@@ -17,7 +17,8 @@ export function SessionGate({ children }: { children: ReactNode }) {
   const session = useSession()
   const { t } = useI18n()
   const capability = useQuery({
-    queryKey: ["mfa-capability"],
+    queryKey: ["mfa-capability", session.data?.subject],
+    enabled: session.isSuccess && Boolean(session.data),
     queryFn: () => apiGet<MfaCapability>("/admin/api/mfa/capability"),
     staleTime: 60_000,
     retry: false,

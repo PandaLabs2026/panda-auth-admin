@@ -72,3 +72,16 @@ describe("SessionGate TOTP 绑定引导（AUTH-DELIVERY-002）", () => {
     expect(screen.queryByText("受保护页面")).not.toBeInTheDocument()
   })
 })
+
+
+describe("SessionGate request isolation", () => {
+  it("does not request MFA capability while the session is unresolved", async () => {
+    const fetch = vi.fn((path: string) => { void path; return new Promise<Response>(() => {}) })
+    vi.stubGlobal("fetch", fetch)
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    render(<I18nProvider config={i18n}><QueryClientProvider client={client}><MemoryRouter><SessionGate><p>private</p></SessionGate></MemoryRouter></QueryClientProvider></I18nProvider>)
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalled())
+    expect(fetch.mock.calls.map(call => call[0])).toEqual(["/admin/api/session"])
+    expect(screen.queryByText("private")).not.toBeInTheDocument()
+  })
+})
