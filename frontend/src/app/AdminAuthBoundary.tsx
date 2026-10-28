@@ -2,14 +2,12 @@ import { useEffect, useMemo, type ReactNode } from "react"
 import { useLocation } from "react-router"
 import { useQueryClient } from "@tanstack/react-query"
 import AuthBoundary from "@/components/patterns/auth/AuthBoundary"
-import { createAuthLifecycle } from "@/components/patterns/auth/lifecycle"
-import { createAuthNavigation } from "@/components/patterns/auth/navigation"
 import type { AuthAdapter } from "@/components/patterns/auth/types"
 import { sessionApi, type Session } from "@/lib/auth"
 import { ApiError } from "@/lib/api"
 import { subscribeSessionExpiry } from "@/lib/session-expiry"
-export const adminAuthLifecycle = createAuthLifecycle()
-export const adminAuthNavigation = createAuthNavigation({ key: "panda.admin.auth", loginPath: "/admin/challenge", home: "/admin/" })
+import { adminAuthLifecycle, adminAuthNavigation } from "@/lib/auth-lifecycle"
+export { adminAuthLifecycle, adminAuthNavigation } from "@/lib/auth-lifecycle"
 export default function AdminAuthBoundary({ children }: { children: ReactNode }) {
   const client = useQueryClient(), location = useLocation()
   const adapter = useMemo<AuthAdapter<Session>>(() => ({

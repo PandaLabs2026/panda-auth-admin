@@ -1,3 +1,4 @@
+import { adminAuthLifecycle } from "@/lib/auth-lifecycle"
 /**
  * BFF API 客户端：GET 直取；变更类先取防伪令牌（与 Cookie 成对校验）再发。
  * 401 统一折算为全页跳登录（会话过期/令牌被吊销/角色丢失），页面层无需各自处理。
@@ -116,8 +117,15 @@ export type Session = {
   portalHomeUrl: string | null
 }
 
+function requireActive(epoch = adminAuthLifecycle.epoch()) {
+  if (adminAuthLifecycle.paused() || epoch !== adminAuthLifecycle.epoch())
+    throw new ApiError("登录状态正在确认，请在确认后重新读取。")
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
-  return fetchWithTimeout(path, { headers: { "X-Requested-With": "XMLHttpRequest" } }, async (response) => {
+  const epoch = adminAuthLifecycle.epoch()
+  requireActive(epoch)
+  const result = await fetchWithTimeout(path, { headers: { "X-Requested-With": "XMLHttpRequest" } }, async (response) => {
     if (response.status === 401) unauthorized()
     if (!response.ok) throw await problemDetailsError(response)
     // 会话 Cookie 过期时 BFF 返回 302 → fetch 跟随重定向最终拿到登录页 HTML（200）：
@@ -126,9 +134,18 @@ export async function apiGet<T>(path: string): Promise<T> {
     if (!contentType.includes("application/json")) throw new Error("服务返回了无效响应。")
     return (await response.json()) as T
   })
+  requireActive(epoch)
+  return result
 }
 
 export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+  requireActive()
+  const release = adminAuthLifecycle.protect("进行中的管理操作")
+  try { return await sendAdmitted<T>(method, path, body) }
+  finally { release() }
+}
+
+async function sendAdmitted<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
   const token = await fetchAntiforgeryToken()
   try {
     return await rawSend<T>(method, path, body, token)
@@ -147,7 +164,9 @@ async function rawSend<T>(
   token: string,
   grantId?: string,
 ): Promise<T> {
-  return fetchWithTimeout(
+  const epoch = adminAuthLifecycle.epoch()
+  requireActive(epoch)
+  const result = await fetchWithTimeout(
     path,
     {
       method,
@@ -207,6 +226,8 @@ async function rawSend<T>(
       return (await response.json()) as T
     },
   )
+  requireActive(epoch)
+  return result
 }
 
 /** MFA 能力探针（BFF 转发 IDP 会话探针）：totpBound=false 时 SPA 全局绑定引导。 */
