@@ -85,7 +85,7 @@ function SessionExpiredBridge() {
     let pending: Promise<unknown> | null = null
     return subscribeSessionExpiry(() => {
       if (pending) return
-      pending = client.fetchQuery({ queryKey: ["session"], queryFn: sessionApi.me, staleTime: 0, retry: false })
+      pending = client.fetchQuery({ queryKey: ["session"], queryFn: ({ signal }) => sessionApi.me(signal), staleTime: 0, retry: false })
         .catch(() => { /* SessionGate presents the query error and explicit retry. */ })
         .finally(() => { pending = null })
     })

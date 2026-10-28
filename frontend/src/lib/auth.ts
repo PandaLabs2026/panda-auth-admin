@@ -64,10 +64,10 @@ export function handleUnauthorized() {
 
 export const sessionApi = {
   /** 会话探测：未登录/会话失效（401 或 302→登录页 HTML）静默收敛为 null，守卫据此跳登录页。 */
-  async me(): Promise<Session | null> {
+  async me(signal?: AbortSignal): Promise<Session | null> {
     return fetchWithTimeout(
       "/admin/api/session",
-      { headers: { "X-Requested-With": "XMLHttpRequest" } },
+      { headers: { "X-Requested-With": "XMLHttpRequest" }, signal },
       async (res) => {
         if (res.status === 401) return null
         if (!res.ok) throw await problemDetailsError(res)
@@ -116,7 +116,7 @@ export const sessionApi = {
 
 /** 会话查询：无会话=null（守卫据此跳登录），Query 缓存取代旧模块级 Promise 单飞。 */
 export function useSession() {
-  return useQuery({ queryKey: ["session"], queryFn: sessionApi.me, staleTime: 60_000, retry: false })
+  return useQuery({ queryKey: ["session"], queryFn: ({ signal }) => sessionApi.me(signal), staleTime: 60_000, retry: false })
 }
 
 export function useLogout() {

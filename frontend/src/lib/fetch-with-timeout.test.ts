@@ -7,6 +7,29 @@ describe("fetchWithTimeout", () => {
     vi.unstubAllGlobals()
   })
 
+  it("propagates caller cancellation and removes its listener after completion", async () => {
+    const caller = new AbortController()
+    const remove = vi.spyOn(caller.signal, "removeEventListener")
+    let requestSignal: AbortSignal | null | undefined
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal
+      caller.abort()
+      return new Response("ok")
+    }))
+    await expect(fetchWithTimeout("/api", { signal: caller.signal }, async () => undefined)).rejects.toMatchObject({ name: "AbortError" })
+    expect(requestSignal?.aborted).toBe(true)
+    expect(remove).toHaveBeenCalledWith("abort", expect.any(Function))
+  })
+
+  it("does not issue a request when its caller has already cancelled", async () => {
+    const caller = new AbortController()
+    caller.abort()
+    const fetch = vi.fn(async () => new Response("ok"))
+    vi.stubGlobal("fetch", fetch)
+    await expect(fetchWithTimeout("/api", { signal: caller.signal }, async () => undefined)).rejects.toMatchObject({ name: "AbortError" })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
   it("aborts a request that exceeds its time budget", async () => {
     vi.useFakeTimers()
     const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
