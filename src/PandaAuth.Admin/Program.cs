@@ -560,11 +560,8 @@ static IResult LogoutFailure(HttpContext context, int status, string detail)
 {
     context.Response.Headers.CacheControl = "no-store";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
-    return Results.Content(
-        "<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>退出未完成 · PandaAuth</title></head>" +
-        "<body><main><h1>退出未完成</h1><p>" + System.Net.WebUtility.HtmlEncode(detail) +
-        "</p><p>当前会话未确认已注销。请返回管理台重新发起退出；此页面不会自动重试。</p>" +
-        "<a href=\"/admin/\">返回管理台</a></main></body></html>",
+    return Results.Content(AdminAuthPage.Render("退出未完成", [detail,
+        "当前会话未确认已注销。请返回管理台重新发起退出；此页面不会自动重试。"], true),
         "text/html; charset=utf-8", statusCode: status);
 }
 
@@ -592,13 +589,10 @@ app.MapGet("/admin/signed-out", (HttpContext context, AdminLogoutProof proof) =>
     context.Response.Cookies.Delete(AdminLogoutProof.CookieName, AdminLogoutProof.CookieOptions);
     context.Response.Headers.CacheControl = "no-store";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
-    return Results.Content(
-    "<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>退出状态 · PandaAuth</title></head>" +
-    "<body><main><img src=\"/admin/pandaauth-logo-horizontal.png\" alt=\"PandaAuth by PandaLabs\" width=\"240\"><h1>退出状态</h1>" +
-    (confirmed ? "<p>本应用的本地会话已清除。</p>" : "<p>本应用的本地退出结果未确认。</p>") +
-    "<p>身份中心及关联应用的退出结果未确认。</p>" +
-    "<p>如需重新进入管理台，请明确选择继续登录。</p><a href=\"/admin/login\">继续登录</a></main></body></html>",
-    "text/html; charset=utf-8");
+    return Results.Content(AdminAuthPage.Render("退出状态", [
+        confirmed ? "本应用的本地会话已清除。" : "本应用的本地退出结果未确认。",
+        "身份中心及关联应用的退出结果未确认。",
+        "如需重新进入管理台，请明确选择继续登录。"], false), "text/html; charset=utf-8");
 }).AllowAnonymous();
 
 app.MapGet("/admin/callback/logout/{provider}", () => Results.Redirect("/admin/signed-out")).AllowAnonymous();
