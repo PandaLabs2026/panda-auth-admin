@@ -21,12 +21,13 @@ namespace PandaAuth.Admin.Tests;
 public sealed class SsoSessionRuntimeTests
 {
     [Theory]
-    [InlineData("admin", true, false)]
-    [InlineData("admin", true, true)]
-    [InlineData("admin", false, false)]
-    [InlineData("admin", false, true)]
+    [InlineData("admin", true, false, false)]
+    [InlineData("admin", true, true, false)]
+    [InlineData("admin", true, true, true)]
+    [InlineData("admin", false, false, false)]
+    [InlineData("admin", false, true, false)]
 
-    public async Task SharedLogout_RevokesLinkedSession_ButPreservesAnotherDevice(string? role, bool sharedLogoutEnabled, bool nativeForm)
+    public async Task SharedLogout_RevokesLinkedSession_ButPreservesAnotherDevice(string? role, bool sharedLogoutEnabled, bool nativeForm, bool endSessionUnavailable)
     {
         var state = new CentralState();
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -46,7 +47,7 @@ public sealed class SsoSessionRuntimeTests
                     var configuration = new OpenIddictConfiguration
                     {
                         Issuer = new Uri("https://idp.example.invalid/"),
-                        EndSessionEndpoint = new Uri("https://idp.example.invalid/connect/logout"),
+                        EndSessionEndpoint = endSessionUnavailable ? null : new Uri("https://idp.example.invalid/connect/logout"),
                     };
                     var registration = options.Registrations.Single(r => r.ProviderName == "pandaauth");
                     registration.Configuration = configuration;
@@ -117,6 +118,14 @@ public sealed class SsoSessionRuntimeTests
             });
         else request.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
         using var logout = await client.SendAsync(request);
+        if (endSessionUnavailable)
+        {
+            Assert.Equal(HttpStatusCode.InternalServerError, logout.StatusCode);
+            Assert.Equal("text/html", logout.Content.Headers.ContentType?.MediaType);
+            Assert.Contains("退出未完成", await logout.Content.ReadAsStringAsync());
+        }
+        else
+        {
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
         var localProof = logout.Headers.GetValues("Set-Cookie")
             .Single(value => value.StartsWith(AdminLogoutProof.CookieName + "=", StringComparison.Ordinal));
@@ -130,6 +139,7 @@ public sealed class SsoSessionRuntimeTests
             Assert.Equal(HttpStatusCode.OK, terminal.StatusCode);
             Assert.Contains("本应用的本地会话已清除", await terminal.Content.ReadAsStringAsync());
             Assert.Contains(terminal.Headers.GetValues("Set-Cookie"), value => value.StartsWith(AdminLogoutProof.CookieName + "=;", StringComparison.Ordinal));
+        }
         }
         Assert.Equal(sharedLogoutEnabled, state.Revoked.Contains(sidA));
         UseCookie(cookieA);

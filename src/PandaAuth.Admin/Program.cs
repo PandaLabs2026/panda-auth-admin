@@ -358,6 +358,13 @@ if (clientEncryptionCredentials is null)
 // SecurityHeaders 在进入后续管线前已写好响应头，错误响应同样带安全头。
 app.UseExceptionHandler(errorApp => errorApp.Run(async httpContext =>
 {
+    if (IsNativeLogoutForm(httpContext))
+    {
+        await LogoutFailure(httpContext, StatusCodes.Status500InternalServerError,
+            "退出交接未完成。请核实本应用与身份中心的当前登录状态。")
+            .ExecuteAsync(httpContext);
+        return;
+    }
     await Results.Problem(
         statusCode: StatusCodes.Status500InternalServerError,
         title: "服务器内部错误",
@@ -564,6 +571,9 @@ static IResult LogoutFailure(HttpContext context, int status, string detail)
 {
     context.Response.Headers.CacheControl = "no-store";
     context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    context.Response.Headers.XContentTypeOptions = "nosniff";
+    context.Response.Headers.XFrameOptions = "DENY";
+    context.Response.Headers["Content-Security-Policy"] = "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; frame-ancestors 'none'";
     return Results.Content(AdminAuthPage.Render("退出未完成", [detail,
         "当前会话未确认已注销。请返回管理台重新发起退出；此页面不会自动重试。"], true),
         "text/html; charset=utf-8", statusCode: status);
