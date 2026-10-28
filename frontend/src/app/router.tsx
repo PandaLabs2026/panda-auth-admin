@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react"
+import { lazy, Suspense } from "react"
 import { createBrowserRouter } from "react-router"
 import { KeyRoundIcon, LogOutIcon } from "lucide-react"
 import AppLayout, { type NavItem } from "@/components/patterns/AppLayout"
@@ -8,9 +8,8 @@ import ForbiddenPage from "@/pages/ForbiddenPage"
 import LoginPage from "@/pages/login"
 import NotFoundPage from "@/pages/NotFoundPage"
 import ServerErrorPage from "@/pages/ServerErrorPage"
-import { useQueryClient } from "@tanstack/react-query"
-import { subscribeSessionExpiry } from "@/lib/session-expiry"
-import { sessionApi } from "@/lib/auth"
+import { useAuthState } from "@/components/patterns/auth/context"
+import AdminAuthBoundary from "./AdminAuthBoundary"
 import { NAV } from "@/lib/nav"
 import { useI18n } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
@@ -43,6 +42,7 @@ const page = (node: React.ReactNode) => <Suspense fallback={<PageFallback />}>{n
  *  面板动作标签随语言切换的刷新由整页行为承载,可接受。 */
 function useCommandActions() {
   const { t } = useI18n()
+  const { logout } = useAuthState()
   return [
     {
       id: "change-password",
@@ -55,7 +55,7 @@ function useCommandActions() {
       label: t("退出登录"),
       icon: LogOutIcon,
       shortcut: "⌘⇧Q",
-      run: () => void sessionApi.logout().catch((error) => notify.failure(error, "退出登录失败；当前会话未确认已注销。")),
+      run: () => void logout().catch((error) => notify.failure(error, "退出登录失败；当前会话未确认已注销。")),
     },
   ]
 }
@@ -78,20 +78,7 @@ export function AppShell() {
   )
 }
 
-/** 401 → 会话过期处理(模板接线):SPA 跳登录页带来源回跳;数据层 401 走 api.ts 整页跳转,双轨见 lib/auth.ts。 */
-function SessionExpiredBridge() {
-  const client = useQueryClient()
-  useEffect(() => {
-    let pending: Promise<unknown> | null = null
-    return subscribeSessionExpiry(() => {
-      if (pending) return
-      pending = client.fetchQuery({ queryKey: ["session"], queryFn: ({ signal }) => sessionApi.me(signal), staleTime: 0, retry: false })
-        .catch(() => { /* SessionGate presents the query error and explicit retry. */ })
-        .finally(() => { pending = null })
-    })
-  }, [client])
-  return null
-}
+/** Protected routes mount inside the shared authentication boundary. */
 
 export const router = createBrowserRouter(
   [
@@ -99,7 +86,6 @@ export const router = createBrowserRouter(
       path: "/login",
       element: (
         <>
-          <SessionExpiredBridge />
           <LoginPage />
         </>
       ),
@@ -107,12 +93,9 @@ export const router = createBrowserRouter(
     {
       path: "/",
       element: (
-        <>
-          <SessionExpiredBridge />
-          <SessionGate>
-            <AppShell />
-          </SessionGate>
-        </>
+        <AdminAuthBoundary>
+          <SessionGate><AppShell /></SessionGate>
+        </AdminAuthBoundary>
       ),
       children: [
         { index: true, element: page(<DashboardPage />) },

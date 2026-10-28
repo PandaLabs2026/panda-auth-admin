@@ -1,3 +1,4 @@
+import { useAuthState } from "@/components/patterns/auth/context"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout"
 import { problemDetailsError } from "@/lib/api"
@@ -116,10 +117,11 @@ export const sessionApi = {
 
 /** 会话查询：无会话=null（守卫据此跳登录），Query 缓存取代旧模块级 Promise 单飞。 */
 export function useSession() {
-  return useQuery({ queryKey: ["session"], queryFn: ({ signal }) => sessionApi.me(signal), staleTime: 60_000, retry: false })
+  const auth = useAuthState()
+  return useQuery({ enabled: !auth.lifecycle, queryKey: ["session"], queryFn: ({ signal }) => sessionApi.me(signal), staleTime: 60_000, retry: false })
 }
 
 export function useLogout() {
-  // Navigation starts the server logout flow; no local success is inferred here.
-  return useMutation({ mutationFn: () => sessionApi.logout() })
+  const auth = useAuthState()
+  return useMutation({ mutationFn: () => auth.lifecycle ? auth.logout() : sessionApi.logout() })
 }
