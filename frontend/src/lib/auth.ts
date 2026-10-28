@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout"
 import { problemDetailsError } from "@/lib/api"
 
@@ -87,7 +87,7 @@ export const sessionApi = {
     )
   },
 
-  /** 登出：防伪令牌成对 POST；BFF 的 end-session 重定向链被 fetch 静默跟随，必须显式整页回登录页。 */
+  /** Fetch only the antiforgery token; the native form owns the complete logout navigation. */
   async logout(): Promise<void> {
     const token = await fetchWithTimeout(
       "/admin/api/antiforgery",
@@ -98,18 +98,19 @@ export const sessionApi = {
       },
       10_000,
     )
-    await fetchWithTimeout(
-      "/admin/api/logout",
-      {
-        method: "POST",
-        headers: { "X-XSRF-Token": token, "X-Requested-With": "XMLHttpRequest" },
-      },
-      async (response) => {
-        if (!response.ok) throw await problemDetailsError(response)
-      },
-      10_000,
-    )
-    window.location.assign("/admin/login")
+    if (typeof token !== "string" || !token) throw new Error("退出请求缺少防伪凭据。")
+    const form = document.createElement("form")
+    form.method = "post"
+    form.action = "/admin/api/logout"
+    form.hidden = true
+    const field = document.createElement("input")
+    field.type = "hidden"
+    field.name = "__RequestVerificationToken"
+    field.value = token
+    form.append(field)
+    document.body.append(form)
+    try { HTMLFormElement.prototype.submit.call(form) }
+    finally { form.remove() }
   },
 }
 
@@ -119,12 +120,6 @@ export function useSession() {
 }
 
 export function useLogout() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: () => sessionApi.logout(),
-    onSuccess: () => {
-      qc.setQueryData(["session"], null)
-      qc.clear()
-    },
-  })
+  // Navigation starts the server logout flow; no local success is inferred here.
+  return useMutation({ mutationFn: () => sessionApi.logout() })
 }

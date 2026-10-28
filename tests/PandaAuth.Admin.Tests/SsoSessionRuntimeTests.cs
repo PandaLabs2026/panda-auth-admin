@@ -21,10 +21,12 @@ namespace PandaAuth.Admin.Tests;
 public sealed class SsoSessionRuntimeTests
 {
     [Theory]
-    [InlineData("admin", true)]
-    [InlineData("admin", false)]
+    [InlineData("admin", true, false)]
+    [InlineData("admin", true, true)]
+    [InlineData("admin", false, false)]
+    [InlineData("admin", false, true)]
 
-    public async Task SharedLogout_RevokesLinkedSession_ButPreservesAnotherDevice(string? role, bool sharedLogoutEnabled)
+    public async Task SharedLogout_RevokesLinkedSession_ButPreservesAnotherDevice(string? role, bool sharedLogoutEnabled, bool nativeForm)
     {
         var state = new CentralState();
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -101,7 +103,11 @@ public sealed class SsoSessionRuntimeTests
         state.RevokeUnavailable = false;
         }
         using var request = new HttpRequestMessage(HttpMethod.Post, "/admin/api/logout");
-        request.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
+        if (nativeForm)
+            request.Content = new FormUrlEncodedContent(new Dictionary<string, string> {
+                ["__RequestVerificationToken"] = payload.GetProperty("token").GetString()!
+            });
+        else request.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
         using var logout = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
         Assert.Equal(sharedLogoutEnabled, state.Revoked.Contains(sidA));
