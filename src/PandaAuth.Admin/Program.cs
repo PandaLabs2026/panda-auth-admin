@@ -213,6 +213,7 @@ builder.Services.AddTokenRevocation(builder.Configuration, new TokenRevocationOp
 var idpInternalBase = builder.Configuration["Auth:IdpInternalBaseAddress"] ?? "http://127.0.0.1:9004/";
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<AdminSessionLifecycle>();
+builder.Services.AddSingleton<AdminLogoutProof>();
 builder.Services.AddHttpClient("session-state", client =>
 {
     client.BaseAddress = new Uri(idpInternalBase);
@@ -585,12 +586,20 @@ async Task<IResult> WithAntiforgeryAsync(HttpContext ctx, Func<Task<IResult>> ha
 
 // A terminal page is public and never starts a new authentication challenge.
 // Direct visits are not evidence that local or identity-provider logout completed.
-app.MapGet("/admin/signed-out", () => Results.Content(
+app.MapGet("/admin/signed-out", (HttpContext context, AdminLogoutProof proof) => {
+    var confirmed = proof.Validate(context.Request.Cookies[AdminLogoutProof.CookieName], DateTimeOffset.UtcNow,
+        context.User.Identity?.IsAuthenticated == true);
+    context.Response.Cookies.Delete(AdminLogoutProof.CookieName, AdminLogoutProof.CookieOptions);
+    context.Response.Headers.CacheControl = "no-store";
+    context.Response.Headers["Referrer-Policy"] = "no-referrer";
+    return Results.Content(
     "<!doctype html><html lang=\"zh\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>退出状态 · PandaAuth</title></head>" +
     "<body><main><img src=\"/admin/pandaauth-logo-horizontal.png\" alt=\"PandaAuth by PandaLabs\" width=\"240\"><h1>退出状态</h1>" +
-    "<p>当前页面未确认本应用或身份中心的退出结果。关联应用的退出范围以身份服务实际结果为准。</p>" +
+    (confirmed ? "<p>本应用的本地会话已清除。</p>" : "<p>本应用的本地退出结果未确认。</p>") +
+    "<p>身份中心及关联应用的退出结果未确认。</p>" +
     "<p>如需重新进入管理台，请明确选择继续登录。</p><a href=\"/admin/login\">继续登录</a></main></body></html>",
-    "text/html; charset=utf-8")).AllowAnonymous();
+    "text/html; charset=utf-8");
+}).AllowAnonymous();
 
 app.MapGet("/admin/callback/logout/{provider}", () => Results.Redirect("/admin/signed-out")).AllowAnonymous();
 
@@ -626,6 +635,9 @@ app.MapPost("/admin/api/logout", (HttpContext context, TokenRevocationClient rev
             context.RequestAborted,
             TenantOidcRouting.ResolveIssuer(context.Request, issuer));
         await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+        context.Response.Cookies.Append(AdminLogoutProof.CookieName,
+            context.RequestServices.GetRequiredService<AdminLogoutProof>().Create(DateTimeOffset.UtcNow),
+            AdminLogoutProof.CookieOptions);
 
         // RP 发起的前端登出：重定向到 IDP 的 end-session 端点（单点登出），再回 PostLogoutRedirectUri。
         return Results.SignOut(

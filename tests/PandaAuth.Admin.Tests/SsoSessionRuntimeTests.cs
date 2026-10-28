@@ -118,6 +118,19 @@ public sealed class SsoSessionRuntimeTests
         else request.Headers.Add("X-XSRF-Token", payload.GetProperty("token").GetString());
         using var logout = await client.SendAsync(request);
         Assert.Equal(HttpStatusCode.Redirect, logout.StatusCode);
+        var localProof = logout.Headers.GetValues("Set-Cookie")
+            .Single(value => value.StartsWith(AdminLogoutProof.CookieName + "=", StringComparison.Ordinal));
+        Assert.Contains("httponly", localProof, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("secure", localProof, StringComparison.OrdinalIgnoreCase);
+        using (var terminalClient = factory.CreateClient(new WebApplicationFactoryClientOptions {
+            BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false, HandleCookies = false }))
+        {
+            terminalClient.DefaultRequestHeaders.Add("Cookie", localProof.Split(';')[0]);
+            using var terminal = await terminalClient.GetAsync("/admin/signed-out");
+            Assert.Equal(HttpStatusCode.OK, terminal.StatusCode);
+            Assert.Contains("本应用的本地会话已清除", await terminal.Content.ReadAsStringAsync());
+            Assert.Contains(terminal.Headers.GetValues("Set-Cookie"), value => value.StartsWith(AdminLogoutProof.CookieName + "=;", StringComparison.Ordinal));
+        }
         Assert.Equal(sharedLogoutEnabled, state.Revoked.Contains(sidA));
         UseCookie(cookieA);
         using var revoked = await client.GetAsync("/admin/api/session");
