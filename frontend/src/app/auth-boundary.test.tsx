@@ -10,7 +10,7 @@ afterEach(() => { vi.restoreAllMocks(); sessionStorage.clear(); localStorage.set
 it("checks before mounting business and preserves the Admin path and query for automatic login", async () => {
   vi.spyOn(sessionApi, "me").mockResolvedValue(null)
   const start = vi.spyOn(adminAuthNavigation, "start").mockReturnValue(false)
-  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={["/users?page=2"]}><AdminAuthBoundary><p>private</p></AdminAuthBoundary></MemoryRouter></QueryClientProvider>)
+  render(<I18nProvider config={i18nConfig}><QueryClientProvider client={new QueryClient()}><MemoryRouter initialEntries={["/users?page=2"]}><AdminAuthBoundary><p>private</p></AdminAuthBoundary></MemoryRouter></QueryClientProvider></I18nProvider>)
   expect(screen.queryByText("private")).not.toBeInTheDocument()
   await waitFor(() => expect(start).toHaveBeenCalledWith("/admin/users?page=2"))
   expect(await screen.findByText("登录未完成")).toBeInTheDocument()
