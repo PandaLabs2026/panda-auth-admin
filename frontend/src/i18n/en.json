@@ -251,5 +251,9 @@
   "前往绑定 TOTP": "Bind TOTP",
   "验证中…": "Verifying...",
   "无权访问管理后台": "You do not have permission to access the administration console.",
-  "正在确认管理权限…": "Checking administration access…"
+  "正在确认管理权限…": "Checking administration access…",
+  "登录未完成": "Sign-in not completed",
+  "继续登录": "Continue to sign in",
+  "本次登录未完成，请明确选择后续操作。": "Sign-in was not completed. Choose how to continue.",
+  "正在前往统一身份认证，如未跳转请使用下方链接。": "Continuing to the identity service. If nothing happens, use the link below."
 }
