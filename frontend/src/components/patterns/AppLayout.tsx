@@ -30,8 +30,8 @@ import { notify } from '@/lib/notify';
  * 用户身份区固定在 SidebarFooter(NavUser 接 useSession/useLogout)。
  * 内容区默认全宽（后台表格/看板优先）,阅读型页面自行收窄:
  * 应用级用 contentClassName,页面级在页面根节点加 max-w-* mx-auto。
- * overflow-x-clip 是骨架完整性约束:文档一旦横向滚动,sticky 顶栏(z-30)会
- * 随内容左移盖到 fixed 侧栏(z-10)上;故横向溢出只允许发生在页面自己的
+ * 内容区隔离层级,顶栏与固定列不能越过侧栏。
+ * overflow-x-clip 约束文档宽度,横向溢出只允许发生在页面自己的
  * 滚动容器内(DataTable/pre 等),超宽杂散内容在内容区边缘裁剪而不撑宽文档。
  */
 
@@ -67,7 +67,7 @@ export default function AppLayout({
   const [commandOpen, setCommandOpen] = useState(false);
   return (
     <SidebarProvider>
-      <Sidebar collapsible="icon">
+      <Sidebar collapsible="icon" className="z-40">
         <SidebarHeader>
           <SidebarMenu>
             <SidebarMenuItem>
@@ -130,7 +130,7 @@ export default function AppLayout({
           </NavUser>
         </SidebarFooter>
       </Sidebar>
-      <SidebarInset className="min-w-0">
+      <SidebarInset className="min-w-0 isolate">
         <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background px-4">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-4" />
