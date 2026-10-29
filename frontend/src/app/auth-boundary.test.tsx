@@ -30,7 +30,7 @@ it("preserves the real English preference on an unavailable session without moun
     </I18nProvider>,
   )
   await waitFor(() => expect(document.documentElement.lang).toBe("en"))
-  expect(await screen.findByRole("heading", { name: "Unable to confirm sign-in status" })).toHaveFocus()
+  expect(await screen.findByRole("heading", { name: "Unable to confirm sign-in" })).toHaveFocus()
   expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument()
   expect(screen.queryByText("private business")).not.toBeInTheDocument()
   expect(start).not.toHaveBeenCalled()
