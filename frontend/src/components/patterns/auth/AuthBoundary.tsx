@@ -6,45 +6,75 @@ import type { AuthAdapter } from './types';
 import type { AuthLifecycle } from './lifecycle';
 import type { AuthNavigation } from './navigation';
 type State<S>={kind:'checking'|'ready'|'anonymous'|'unavailable'|'forbidden'|'loop'|'signed-out'|'logout-error'|'logging-out';session?:S;status?:number;handoff?:string;incomplete?:boolean};
-type Props<S>={adapter?:AuthAdapter<S>;lifecycle:AuthLifecycle;navigation:AuthNavigation;brand:ReactNode;target:string;terminal?:boolean;children:ReactNode};
+type Props<S>={adapter?:AuthAdapter<S>;lifecycle:AuthLifecycle;navigation:AuthNavigation;brand:ReactNode;target:string;terminal?:boolean;revalidateOnResume?:boolean;recoveryPresentation?:'restore'|'quiet';children:ReactNode};
 export default function AuthBoundary<S>(props:Props<S>) {
  if(!props.adapter)return <AuthStatusPage brand={props.brand} title="登录配置未完成" description="此应用尚未配置真实认证适配器，请联系管理员。"/>;
  return <ConfiguredBoundary {...props} adapter={props.adapter}/>;
 }
-function ConfiguredBoundary<S>({adapter,lifecycle,navigation,brand,target,terminal=false,children}:Props<S>&{adapter:AuthAdapter<S>}) {
+function ConfiguredBoundary<S>({adapter,lifecycle,navigation,brand,target,terminal=false,revalidateOnResume=false,recoveryPresentation,children}:Props<S>&{adapter:AuthAdapter<S>}) {
  const stopped=terminal||navigation.wasSignedOut()||navigation.logoutPending();
  const [state,setState]=useState<State<S>>(() => ({kind:!terminal&&navigation.logoutPending()?'logout-error':stopped?'signed-out':'checking',incomplete:stopped&&!terminal}));
- const [revision,setRevision]=useState(0);
+ const [revision,setRevision]=useState(0),[businessGeneration,setBusinessGeneration]=useState(0);
+ const mode=useRef<'forced'|'resume'>('forced'),request=useRef<AbortController|undefined>(undefined);
  const generation=useRef(0),verifying=useRef(false),entered=useRef(false),leaving=useRef(false),loggingOut=useRef(false),mounted=useRef(false);
  const protections=useSyncExternalStore(lifecycle.subscribe,() => lifecycle.reasons().join('、'));
  const paused=useSyncExternalStore(lifecycle.subscribe,lifecycle.paused);
  const invalidate=useCallback(()=>{generation.current++;},[]);
  const recheck=useCallback(() => {
-  if(!verifying.current&&!loggingOut.current){verifying.current=true;lifecycle.pause(true);setRevision(v=>v+1);}
+  if(loggingOut.current)return;
+  if(verifying.current&&mode.current==='resume'){request.current?.abort();generation.current++;verifying.current=false;}
+  if(!verifying.current){mode.current='forced';verifying.current=true;lifecycle.pause(true);setRevision(v=>v+1);}
  },[lifecycle]);
  useEffect(() => {
   mounted.current=true;lifecycle.resetRejections();const off=lifecycle.subscribeExpired(recheck);
   return () => {mounted.current=false;invalidate();off();lifecycle.pause(false);};
  },[lifecycle,recheck,invalidate]);
  useEffect(() => {
-  if(stopped){lifecycle.pause(true);if(terminal)navigation.markSignedOut();return;}
-  const current=++generation.current,controller=new AbortController();verifying.current=true;lifecycle.pause(true);
+  if(stopped){request.current?.abort();lifecycle.pause(true);if(terminal)navigation.markSignedOut();return;}
+  const current=++generation.current,controller=new AbortController();verifying.current=true;request.current=controller;
+  const background=mode.current==='resume',previous=state.session;
+  if(!background)lifecycle.pause(true);
+  const epoch=lifecycle.epoch();
   void adapter.session(controller.signal).then(session=>{
-   if(!mounted.current||controller.signal.aborted||current!==generation.current)return;
+   if(!mounted.current||controller.signal.aborted||current!==generation.current||epoch!==lifecycle.epoch())return;
    // Business effects can issue 401 synchronously on the first commit.
    // Finish this check before publishing readiness, never in a later finally.
    verifying.current=false;
+   if(background&&session!==null&&previous!==undefined&&adapter.sameSession?.(previous,session))return;
+   lifecycle.pause(true);
+   if(background&&session!==null)setBusinessGeneration(v=>v+1);
    adapter.sessionChanged?.(session??undefined);
    if(session===null){setState({kind:'anonymous'});return;}
    navigation.confirmSession();entered.current=true;lifecycle.pause(false);setState({kind:'ready',session});
   }).catch(error=>{
-   if(!mounted.current||controller.signal.aborted||current!==generation.current)return;
+   if(!mounted.current||controller.signal.aborted||current!==generation.current||epoch!==lifecycle.epoch())return;
    verifying.current=false;
+   if(error instanceof DOMException&&error.name==='AbortError')return;
+   lifecycle.pause(true);
    const status=adapter.status(error);adapter.sessionChanged?.(undefined);
    setState({kind:status===401?'anonymous':status===403||status===421?'forbidden':'unavailable',status});
   });
   return ()=>{controller.abort();invalidate();};
+ // State is a snapshot at request start, not a request trigger.
+ // eslint-disable-next-line react-hooks/exhaustive-deps
  },[adapter,lifecycle,navigation,revision,stopped,terminal,invalidate]);
+ useEffect(()=>{
+  if(!revalidateOnResume||stopped||state.kind!=='ready'||paused)return;
+  const resume=()=>{
+   if(navigation.wasSignedOut()||navigation.logoutPending()){
+    request.current?.abort();generation.current++;verifying.current=false;lifecycle.pause(true);
+    adapter.sessionChanged?.(undefined);
+    setState({kind:navigation.logoutPending()?'logout-error':'signed-out',incomplete:true});return;
+   }
+   if(verifying.current||loggingOut.current||lifecycle.paused())return;
+   verifying.current=true;mode.current='resume';setRevision(v=>v+1);
+  };
+  const visible=()=>{if(document.visibilityState==='visible')resume();};
+  const restored=(event:PageTransitionEvent)=>{if(event.persisted)resume();};
+  window.addEventListener('focus',resume);document.addEventListener('visibilitychange',visible);window.addEventListener('pageshow',restored);
+  return()=>{window.removeEventListener('focus',resume);document.removeEventListener('visibilitychange',visible);window.removeEventListener('pageshow',restored);};
+ },[revalidateOnResume,stopped,state.kind,paused,navigation,lifecycle,adapter]);
+ const recovering=Boolean(recoveryPresentation)&&(state.kind==='checking'||state.kind==='anonymous'&&!protections||state.kind==='ready'&&paused);
  useEffect(()=>{
   if(state.kind!=='anonymous'||protections||leaving.current)return;
   leaving.current=true;
@@ -58,7 +88,7 @@ function ConfiguredBoundary<S>({adapter,lifecycle,navigation,brand,target,termin
  async function logout(){
   if(loggingOut.current)return;
   if(lifecycle.reasons().length&&!window.confirm('退出将丢失未保存内容或待核实的操作信息。确认退出？'))return;
-  loggingOut.current=true;navigation.markLogoutPending();generation.current++;lifecycle.pause(true);setState({kind:'logging-out',session:state.session});
+  loggingOut.current=true;navigation.markLogoutPending();request.current?.abort();generation.current++;lifecycle.pause(true);setState({kind:'logging-out',session:state.session});
   try{
    const session=state.session??await adapter.session(new AbortController().signal);
    if(!mounted.current)return;
@@ -82,7 +112,7 @@ function ConfiguredBoundary<S>({adapter,lifecycle,navigation,brand,target,termin
   }catch{/* retain an explicitly unconfirmed result */}
   finally{verifying.current=false;}
  }
- const retry=()=>{if(!verifying.current){setRevision(v=>v+1);}};
+ const retry=()=>{if(!verifying.current){mode.current='forced';setRevision(v=>v+1);}};
  const page=(title:string,description?:string,actions?:ReactNode,busy=false)=><AuthStatusPage brand={brand} title={title} description={description} busy={busy}>{actions}</AuthStatusPage>;
  const login=(label:string)=><Button asChild><a href={navigation.href(target)} onClick={depart}>{label}</a></Button>;
  let status:ReactNode;
@@ -93,9 +123,10 @@ function ConfiguredBoundary<S>({adapter,lifecycle,navigation,brand,target,termin
  else if(state.kind==='logout-error')status=page('退出结果未获确认','请求未得到完整确认，请重试完成退出；不要将此状态视为身份服务已退出。',<><Button onClick={()=>{void logout();}}>重试退出</Button><Button variant="outline" onClick={()=>{void checkLogout();}}>重新检查退出状态</Button></>);
  else if(state.kind==='forbidden')status=page(state.status===421?'访问地址未登记':'此账号没有访问权限','请使用登记的访问地址并联系管理员确认权限。',<Button variant="outline" onClick={retry}>重新检查</Button>);
  else if(state.kind==='unavailable')status=page('暂时无法确认登录状态','服务暂时不可用，请稍后重试。',<Button onClick={retry}>重试</Button>);
+ if(recovering)status=<AuthStatusPage brand={brand} title="正在恢复访问…" description={state.kind==='anonymous'?'正在前往认证…':'正在检查登录状态…'} busy reserveActions presentation={recoveryPresentation==='quiet'?'quiet':undefined}>{state.kind==='anonymous'&&login('继续登录')}</AuthStatusPage>;
  const active=state.kind==='ready'&&!paused,retain=entered.current&&(state.kind==='ready'||Boolean(protections))&&!stopped;
  return <AuthContext.Provider value={{session:active?state.session:undefined,lifecycle,logout,loggingOut:state.kind==='logging-out'}}>
   {!active?(status??page('正在确认登录状态…',undefined,undefined,true)):null}
-  {retain&&<div hidden={!active} inert={!active} className="min-h-svh">{children}</div>}
+  {retain&&<div key={businessGeneration} hidden={!active} inert={!active} className="min-h-svh">{children}</div>}
  </AuthContext.Provider>;
 }

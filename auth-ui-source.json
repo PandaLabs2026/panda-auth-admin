@@ -2,17 +2,17 @@
   "schema": 1,
   "repository": "PandaLabs2026/panda-webapp-template",
   "consumer": "panda-auth-admin",
-  "version": "v0.6.4",
-  "commit": "38fb2eb45dc9f38a46f5608c27c0940a7c1ac10c",
+  "version": "v0.6.7",
+  "commit": "195b0eb6c0bb741570cc66c5b4d301e356ff046b",
   "files": {
-    "frontend/src/components/patterns/auth/AuthBoundary.test.tsx": "39b117b33da0f2ac110d57d581b39171a3c704936f5a7f4504f3c1159ba29001",
-    "frontend/src/components/patterns/auth/AuthBoundary.tsx": "2636ff2825362b68ceb688055c63b763c0424da82f5ab7c70028db49d2d3d65f",
-    "frontend/src/components/patterns/auth/AuthStatusPage.tsx": "6dc3a145067cf9f4f0b9c72ada2c1f20d31d82d2895dd8e0716bb8dcf672dfa2",
+    "frontend/src/components/patterns/auth/AuthBoundary.test.tsx": "01dfc5aedc3484265d1b52a15d8faa760e1151ad4554251b3758808659875735",
+    "frontend/src/components/patterns/auth/AuthBoundary.tsx": "88d1cad82b76d944ec422bb4b54280d55cc4fc95b597bdf7e2115a57c8bbb08a",
+    "frontend/src/components/patterns/auth/AuthStatusPage.tsx": "5b75ae4b8ce27116bed81c890600626d8ec9a065777f59521ac406e541113d30",
     "frontend/src/components/patterns/auth/context.ts": "569858986e9e51a618b064b10310454ed4204cd7bcaea6d50c3be83e914f9568",
     "frontend/src/components/patterns/auth/lifecycle.test.ts": "c54b3b24e77049ab4a0d4eed6b9df66368c4b767d459dca3f0b3d70751c82134",
     "frontend/src/components/patterns/auth/lifecycle.ts": "c25deb1c30ca16bd279c0bd63eeda6689ff07f5ccdb814167a675db2c593c8bc",
     "frontend/src/components/patterns/auth/navigation.test.ts": "291a3b4269e1da7779c8f736774f8f1484889c5d11c8c7bd82e643ca2f0c551f",
     "frontend/src/components/patterns/auth/navigation.ts": "cba506e065ebc46b2bb297f0aac98621b9230a78ef19fd40c0229d0182993c45",
-    "frontend/src/components/patterns/auth/types.ts": "6b63138b93c71153180ea8b609797cc39f30141db46798d69d647a428bc2f0f4"
+    "frontend/src/components/patterns/auth/types.ts": "4e74ca5dc2feea67f558abd847045e845c06fae217d04beb1b81866c29e4ce39"
   }
 }

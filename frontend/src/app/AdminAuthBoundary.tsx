@@ -13,6 +13,11 @@ export default function AdminAuthBoundary({ children }: { children: ReactNode })
   const client = useQueryClient(), location = useLocation()
   const adapter = useMemo<AuthAdapter<Session>>(() => ({
     session: signal => sessionApi.me(signal),
+    // Every session field is identity-derived; any drift remounts the workspace.
+    sameSession: (current, next) => {
+      const comparable = (session: Session) => Object.entries(session).sort(([a], [b]) => a.localeCompare(b))
+      return JSON.stringify(comparable(current)) === JSON.stringify(comparable(next))
+    },
     status: error => error instanceof ApiError ? error.status ?? 0 : 0,
     async logout() { await sessionApi.logout(); return { kind: "navigation" } },
     sessionChanged(session) {
@@ -26,19 +31,9 @@ export default function AdminAuthBoundary({ children }: { children: ReactNode })
     },
   }), [client])
   useEffect(() => subscribeSessionExpiry(() => adminAuthLifecycle.unauthorized()), [])
-  useEffect(() => {
-    const check = () => { if (document.visibilityState === "visible") adminAuthLifecycle.unauthorized() }
-    window.addEventListener("focus", check)
-    window.addEventListener("pageshow", check)
-    document.addEventListener("visibilitychange", check)
-    return () => {
-      window.removeEventListener("focus", check)
-      window.removeEventListener("pageshow", check)
-      document.removeEventListener("visibilitychange", check)
-    }
-  }, [])
   return <AuthBoundary adapter={adapter} lifecycle={adminAuthLifecycle} navigation={adminAuthNavigation}
     target={"/admin" + (location.pathname === "/" ? "/" : location.pathname) + location.search}
+    revalidateOnResume recoveryPresentation="quiet"
     brand={<img src="/admin/pandaauth-logo-horizontal.png" alt="PandaAuth by PandaLabs" className="h-9 w-auto max-w-full object-contain"/>}>
     {children}
   </AuthBoundary>
