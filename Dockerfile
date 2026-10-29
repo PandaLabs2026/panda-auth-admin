@@ -17,7 +17,7 @@ RUN npm run build
 
 # ================= 后端构建 =================
 # 基础镜像 digest 钉值，原 tag：mcr.microsoft.com/dotnet/sdk:10.0（2026-10-06 解析）
-FROM mcr.microsoft.com/dotnet/sdk@sha256:0eeb52c76e35a5431ca707ad2bc75e38006a05393045d8532ae44c15d9474523 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0.403@sha256:de4fe90a98845d75910b9769662465c84de1a934665c431279d1382b2bddc02b AS build
 WORKDIR /src
 # restore 缓存层：先只进清单文件（本仓 slnx/global.json/props 落在 /src，与旧布局一致，
 # 再补 publish 目标工程的 csproj 与引用图上的 share props + share/src csproj），
