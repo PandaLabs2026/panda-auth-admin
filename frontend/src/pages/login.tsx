@@ -1,9 +1,8 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useLocation, useSearchParams } from "react-router"
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Skeleton } from "@/components/ui/skeleton"
+import AuthStatusPage from "@/components/patterns/auth/AuthStatusPage"
+import { buttonVariants } from "@/components/ui/button"
 import { useI18n } from "@/lib/i18n"
 import { adminAuthNavigation } from "@/lib/auth-lifecycle"
 
@@ -27,58 +26,42 @@ export default function LoginPage() {
   const { t } = useI18n()
   const [searchParams] = useSearchParams()
   const location = useLocation()
-  // returnUrl 原样透传:消费点是 BFF 挑战端点的 LoginReturnUrl 白名单,
-  // 前端不做二次校验(校验语义只有一处,服务端兜住全部入口)。
-  const stateFrom = (location.state as { from?: string } | null)?.from
-  const returnUrl = searchParams.get("returnUrl") ?? (stateFrom && stateFrom.startsWith("/") ? stateFrom : "")
-  const hasError = searchParams.has("error")
+  const stateFrom: unknown = (location.state as { from?: unknown } | null)?.from
+  const duplicateReturnUrl = searchParams.getAll("returnUrl").length > 1
+  // The BFF owns destination validation. Ambiguous duplicate parameters use home.
+  const returnUrl = duplicateReturnUrl ? "" : searchParams.get("returnUrl") ??
+    (typeof stateFrom === "string" && stateFrom.startsWith("/") ? stateFrom : "")
+  const target = returnUrl || adminAuthNavigation.home
+  const failed = searchParams.has("error") || duplicateReturnUrl
+  const attempted = useRef(false)
   const [leaving, setLeaving] = useState(false)
   const [blocked, setBlocked] = useState(false)
 
   useEffect(() => {
-    if (returnUrl && !hasError) {
-      const started = adminAuthNavigation.start(returnUrl)
-      setLeaving(started)
-      setBlocked(!started)
-    }
-  }, [returnUrl, hasError])
+    if (!returnUrl || failed || attempted.current) return
+    attempted.current = true
+    const started = adminAuthNavigation.start(returnUrl)
+    setLeaving(started)
+    setBlocked(!started)
+  }, [returnUrl, failed])
 
-  const startLogin = () => {
-    setLeaving(adminAuthNavigation.start(returnUrl || adminAuthNavigation.home, true))
-  }
+  const title = leaving ? "正在前往登录…" : failed || blocked ? "登录未完成" : "管理后台登录"
+  const description = leaving ? "正在前往统一身份认证，如未跳转请使用下方链接。" :
+    failed || blocked ? "本次登录未完成，请明确选择后续操作。" : "仅限熊猫实验室管理员，使用 PandaAuth 账号登录。"
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="login-brand-panel relative hidden flex-1 items-end overflow-hidden p-10 text-white lg:flex">
-        <div className="login-bamboo absolute inset-0" aria-hidden="true" />
-        <div className="relative">
-          <p className="flex items-center gap-3 text-3xl font-bold tracking-wide">
-            <img src="/admin/pandaauth-logo-horizontal-dark.png" alt="PandaAuth by PandaLabs" className="h-9 w-auto max-w-full object-contain object-left" />
-          </p>
-          <p className="mt-3 max-w-md text-sm opacity-90">
-            {t("熊猫实验室统一身份认证中台。一次登录，全生态通行。")}
-          </p>
-        </div>
-      </aside>
-      <main className="flex flex-1 items-center justify-center bg-background p-6">
-        <Card className="w-full max-w-sm">
-          <CardHeader>
-            <CardTitle className="text-lg text-primary">{t("管理后台登录")}</CardTitle>
-            <CardDescription>{t("仅限熊猫实验室管理员，使用 PandaAuth 账号登录。")}</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3">
-            {(hasError || blocked) && (
-              <p className="rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                {t("登录未完成，请重试；若持续出现请联系管理员。")}
-              </p>
-            )}
-            {leaving && <Skeleton className="h-1.5 w-full" aria-hidden="true" />}
-            <Button className="w-full" disabled={leaving} onClick={startLogin}>
-              {leaving ? t("正在前往登录…") : t("使用 PandaAuth 登录")}
-            </Button>
-          </CardContent>
-        </Card>
-      </main>
-    </div>
+    <AuthStatusPage
+      title={t(title)}
+      description={t(description)}
+      busy={leaving}
+      brand={<img src="/admin/pandaauth-logo-horizontal.png" alt="PandaAuth by PandaLabs" className="h-9 w-auto max-w-full object-contain object-left" />}
+    >
+      <a href={adminAuthNavigation.href(target)} className={buttonVariants()} onClick={(event) => {
+        event.preventDefault()
+        const started = adminAuthNavigation.start(target, true)
+        setLeaving(started)
+        setBlocked(!started)
+      }}>{t("继续登录")}</a>
+    </AuthStatusPage>
   )
 }
