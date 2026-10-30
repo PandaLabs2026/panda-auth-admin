@@ -1,10 +1,10 @@
 import { useEffect,useId,useRef,useState,type ReactNode } from 'react';
 // Presentation only: requests and navigation are never delayed by this timer.
 const quietRevealDelayMs=800;
-export default function AuthStatusPage({title,description,children,busy=false,brand,deferStatus=false,reserveActions=false,presentation}:{title:string;description?:string;children?:ReactNode;busy?:boolean;brand:ReactNode;deferStatus?:boolean;reserveActions?:boolean;presentation?:'quiet'}) {
+export default function AuthStatusPage({title,description,children,busy=false,brand,deferStatus=false,reserveActions=false,presentation,focusHeading=true}:{title:string;description?:string;children?:ReactNode;busy?:boolean;brand:ReactNode;deferStatus?:boolean;reserveActions?:boolean;presentation?:'quiet';focusHeading?:boolean}) {
  const heading=useRef<HTMLHeadingElement>(null),id=useId();
  const quiet=busy&&presentation==='quiet';
- useEffect(() => {if(!quiet&&!deferStatus)heading.current?.focus();},[title,deferStatus,quiet]);
+ useEffect(() => {if(focusHeading&&!quiet&&!deferStatus)heading.current?.focus();},[title,deferStatus,quiet,focusHeading]);
  if(quiet)return <QuietStatus description={description??title}>{children}</QuietStatus>;
  return <main className="grid min-h-svh place-items-center bg-background p-4 sm:p-6">
   <section aria-labelledby={id} className="w-full max-w-sm rounded-xl border bg-card p-6 shadow-sm sm:p-8">

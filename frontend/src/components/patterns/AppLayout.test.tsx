@@ -36,8 +36,8 @@ test('骨架渲染:导航项/Outlet 内容/顶栏标题/页脚版本/身份区',
   expect(await screen.findByText('页面内容')).toBeInTheDocument();
   expect(screen.getAllByText('首页').length).toBeGreaterThan(0);
   expect(screen.getByText('其他')).toBeInTheDocument();
-  expect(screen.getByText('测试应用')).toBeInTheDocument();
-  expect(screen.getByText(/模板版本/)).toBeInTheDocument();
+  expect(screen.getAllByText('首页')).toHaveLength(2);
+  expect(screen.queryByText(/模板版本/)).not.toBeInTheDocument();
   // 默认品牌块:未传 brand 时模板双行文字照常渲染
   expect(screen.getByText('PandaLabs')).toBeInTheDocument();
   expect(screen.getByText('Web 模板')).toBeInTheDocument();

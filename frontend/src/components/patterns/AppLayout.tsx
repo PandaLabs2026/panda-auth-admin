@@ -1,5 +1,6 @@
+import { UserRoundCog } from 'lucide-react';
 import { useState } from 'react';
-import { NavLink, Outlet } from 'react-router';
+import { NavLink, Outlet, useLocation } from 'react-router';
 import { cn } from 'cn';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -65,6 +66,8 @@ export default function AppLayout({
   const { data: session } = useSession();
   const logout = useLogout();
   const [commandOpen, setCommandOpen] = useState(false);
+  const { pathname } = useLocation();
+  const active = navItems.find(({ to, end }) => end ? pathname === to : pathname === to || pathname.startsWith(to + '/'));
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon" className="z-40">
@@ -76,7 +79,7 @@ export default function AppLayout({
                     否则应用自注品牌后侧栏出现两组文字(auth-me/fleet-hub 踩坑)。 */}
                 {brand ?? (
                   <>
-                    <img src="/brand/pandalabs-mark-96.png" alt="PandaLabs" className="size-8 rounded-lg object-contain" />
+                    <img src={`${import.meta.env.BASE_URL}brand/pandalabs-mark-96.png`} alt="PandaLabs" className="size-8 rounded-lg object-contain" />
                     <span className="grid flex-1 text-left leading-tight">
                       <span className="font-semibold">PandaLabs</span>
                       <span className="text-xs text-muted-foreground">Web 模板</span>
@@ -124,17 +127,17 @@ export default function AppLayout({
                 应用只经会话下发的 accountEntryUrl 跳转;改完回应用,会话到下次刷新才更新。 */}
             {session?.accountEntryUrl && (
               <DropdownMenuItem asChild>
-                <a href={session.accountEntryUrl} target="_blank" rel="noopener noreferrer">账号设置</a>
+                <a href={session.accountEntryUrl} target="_blank" rel="noopener noreferrer"><UserRoundCog aria-hidden="true" />账号设置</a>
               </DropdownMenuItem>
             )}
           </NavUser>
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="min-w-0 isolate">
-        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background px-4">
+        <header className="sticky top-0 z-30 flex h-12 items-center gap-2 border-b bg-background px-4 md:[body:has([data-slot=context-panel-content])_&]:pr-[calc(var(--context-panel-width,25rem)+1rem)]">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-4" />
-          <span className="text-sm font-medium">{title ?? '应用名'}</span>
+          <span className="min-w-0 truncate text-sm font-medium">{active?.label ?? title ?? '应用名'}</span>
           <div className="ml-auto flex items-center gap-1" data-testid="header-actions">
             {headerActions}
           </div>
@@ -142,9 +145,6 @@ export default function AppLayout({
         <main className={cn('flex w-full min-w-0 flex-1 flex-col gap-6 overflow-x-clip p-6', contentClassName)}>
           <Outlet />
         </main>
-        <footer className="border-t px-4 py-2 text-[11px] text-muted-foreground">
-          模板版本 {__APP_VERSION__}
-        </footer>
       </SidebarInset>
       <CommandPalette navItems={navItems} actions={commandActions} open={commandOpen} onOpenChange={setCommandOpen} />
       {/* 全局反馈出口:所有 notify 调用的渲染终点,布局挂载一次 */}

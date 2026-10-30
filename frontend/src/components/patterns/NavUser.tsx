@@ -42,7 +42,7 @@ export default function NavUser({
 
   const avatar = (className?: string) => (
     <Avatar className={className ?? 'size-8 rounded-lg'}>
-      <AvatarImage src={avatarUrl ?? '/brand/default-avatar.svg'} alt={name} />
+      <AvatarImage src={avatarUrl ?? `${import.meta.env.BASE_URL}brand/default-avatar.svg`} alt={name} />
       <AvatarFallback className="rounded-lg">{initial}</AvatarFallback>
     </Avatar>
   );

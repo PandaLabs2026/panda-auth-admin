@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useLocation, useNavigationType, useSearchParams } from "react-router"
 import { useQuery } from "@tanstack/react-query"
+import { XIcon } from "lucide-react"
 
 import SemanticBadge from "@/components/semantic-badge"
+import ContextPanel from "@/components/patterns/ContextPanel"
+import { usePanelCloseGuard } from "@/components/patterns/context-panel-guard"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -44,6 +47,10 @@ function useDebouncedFilter(value: string, key: string, update: (patch: Record<s
 export default function AuditPage() {
   const { t } = useI18n()
   const [searchParams, setSearchParams] = useSearchParams()
+  const [selected, setSelected] = useState<{ kind: "login"; entry: LoginLogEntry } | { kind: "admin"; entry: AdminAuditEntry } | null>(null)
+  const returnFocusRef = useRef<HTMLElement | null>(null)
+  const panelGuard = usePanelCloseGuard({ dirty: false, onClose: () => setSelected(null) })
+  useEffect(() => { setSelected(null) }, [searchParams])
 
   const tab = searchParams.get("tab") === "admin" ? "admin" : "logins"
   const from = searchParams.get("from") ?? ""
@@ -209,7 +216,7 @@ export default function AuditPage() {
               <TableBody>
                 {(logins?.items ?? []).map((log) => (
                   <TableRow key={log.id} className="border-b last:border-0 hover:bg-muted/20">
-                    <TableCell className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</TableCell>
+                    <TableCell className="px-4 py-2.5 text-muted-foreground"><button type="button" className="text-left underline-offset-4 hover:underline focus-visible:outline-2" onClick={(event) => { returnFocusRef.current = event.currentTarget; setSelected({ kind: "login", entry: log }) }} aria-label={t("查看日志详情 {id}", { id: log.id })}>{new Date(log.createdAt).toLocaleString()}</button></TableCell>
                     <TableCell className="px-4 py-2.5">{log.userName}</TableCell>
                     <TableCell className="px-4 py-2.5">
                       {log.succeeded ? (
@@ -255,7 +262,7 @@ export default function AuditPage() {
               <TableBody>
                 {(admin?.items ?? []).map((log) => (
                   <TableRow key={log.id} className="border-b last:border-0 hover:bg-muted/20">
-                    <TableCell className="px-4 py-2.5 text-muted-foreground">{new Date(log.createdAt).toLocaleString()}</TableCell>
+                    <TableCell className="px-4 py-2.5 text-muted-foreground"><button type="button" className="text-left underline-offset-4 hover:underline focus-visible:outline-2" onClick={(event) => { returnFocusRef.current = event.currentTarget; setSelected({ kind: "admin", entry: log }) }} aria-label={t("查看日志详情 {id}", { id: log.id })}>{new Date(log.createdAt).toLocaleString()}</button></TableCell>
                     <TableCell className="px-4 py-2.5">{log.actorUserName ?? log.actorUserId}</TableCell>
                     <TableCell className="whitespace-nowrap px-4 py-2.5 text-xs">
                       <span>{t(AUDIT_ACTION[log.action] ?? log.action)}</span>
@@ -289,6 +296,18 @@ export default function AuditPage() {
           )}
         </CardContent>
       </Card>
+
+      <ContextPanel open={selected !== null} guard={panelGuard} title={t("日志详情")} objectId={selected ? String(selected.entry.id) : undefined} returnFocusRef={returnFocusRef}
+        className="[&_button[aria-label='关闭面板']]:hidden"
+        headerActions={<Button variant="ghost" size="icon-sm" aria-label={t("关闭")} onClick={() => panelGuard.requestClose("close-button")}><XIcon aria-hidden="true" /></Button>}>
+        {selected && <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-3 text-sm break-words">
+          <dt className="text-muted-foreground">{t("时间")}</dt><dd>{new Date(selected.entry.createdAt).toLocaleString()}</dd>
+          <dt className="text-muted-foreground">{t(selected.kind === "login" ? "用户" : "操作者")}</dt><dd>{selected.kind === "login" ? selected.entry.userName : selected.entry.actorUserName ?? selected.entry.actorUserId}</dd>
+          <dt className="text-muted-foreground">{t(selected.kind === "login" ? "结果" : "动作")}</dt><dd>{selected.kind === "login" ? t(selected.entry.succeeded ? "成功" : "失败") : t(AUDIT_ACTION[selected.entry.action] ?? selected.entry.action)}</dd>
+          <dt className="text-muted-foreground">{t(selected.kind === "login" ? "失败原因" : "目标")}</dt><dd>{selected.kind === "login" ? selected.entry.failureReason ?? "—" : `${selected.entry.targetType ?? ""}:${selected.entry.targetId ?? ""}`}</dd>
+          <dt className="text-muted-foreground">IP</dt><dd>{selected.entry.ipAddress ?? "—"}</dd>
+        </dl>}
+      </ContextPanel>
 
       <div className="flex items-center justify-between text-sm">
         <span className="text-muted-foreground">
