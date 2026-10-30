@@ -185,3 +185,54 @@ test('quiet recovery keeps dirty-state protection and navigation loop failures v
  expect(await screen.findByRole('heading',{name:'登录未完成'})).toBeVisible();
  expect(screen.getByRole('link',{name:'重新登录'})).toBeVisible();expect(f.replace).not.toHaveBeenCalled();
 });
+
+const english:Record<string,string>={
+ '正在确认登录状态…':'Checking sign-in…','暂时无法确认登录状态':'Unable to confirm sign-in',
+ '服务暂时不可用，请稍后重试。':'The service is unavailable. Please try again later.','重试':'Retry',
+ '登录已过期':'Sign-in expired','未保存表单':'unsaved form','当前有':'You have ',
+ '。请先保留未保存的内容；如有待核实的操作，请记录操作编号，重新登录后核实结果。':'. Save your work and record pending operation IDs before signing in again.',
+ '确认离开并重新登录':'Leave and sign in again',
+ '重新认证将离开当前页面，未保存内容将丢失。请先保留内容；如有待核实的操作，请记录操作编号，登录后核实结果。确认离开？':'Leave this page and sign in again? Save your work and record pending operation IDs first.',
+ '登录配置未完成':'Sign-in is not configured',
+};
+const translateEnglish=(message:string)=>english[message]??message;
+function localized(f:ReturnType<typeof fixture>,translate:(message:string)=>string){
+ return <AuthBoundary adapter={f.adapter} lifecycle={f.lifecycle} navigation={f.navigation} brand="Product" target="/notify?q=%E4%B8%AD" translate={translate}><button>business</button></AuthBoundary>;
+}
+test('consumer translation covers loading, service failure and explicit retry without challenge',async()=>{
+ const f=fixture(vi.fn().mockRejectedValue({status:503}));render(localized(f,translateEnglish));
+ expect(screen.getByRole('heading',{name:'Checking sign-in…'})).toBeVisible();
+ await screen.findByRole('heading',{name:'Unable to confirm sign-in'});
+ expect(screen.getByText('The service is unavailable. Please try again later.')).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Retry'}));await waitFor(()=>expect(f.session).toHaveBeenCalledTimes(2));
+ expect(f.replace).not.toHaveBeenCalled();expect(f.logout).not.toHaveBeenCalled();
+});
+test('changing presentation language preserves an in-flight session request',async()=>{
+ let resolve!:(value:null)=>void;const f=fixture(vi.fn().mockImplementation(()=>new Promise<null>(r=>{resolve=r;})));
+ const view=render(localized(f,translateEnglish));expect(screen.getByRole('heading',{name:'Checking sign-in…'})).toBeVisible();
+ view.rerender(localized(f,message=>message));expect(screen.getByRole('heading',{name:'正在确认登录状态…'})).toBeVisible();
+ expect(f.session).toHaveBeenCalledOnce();expect(f.session.mock.calls[0][0].aborted).toBe(false);
+ await act(async()=>resolve(null));expect(f.replace).toHaveBeenCalledOnce();expect(f.logout).not.toHaveBeenCalled();
+});
+test('translated protected expiry keeps draft hidden and requires translated departure confirmation',async()=>{
+ const f=fixture(vi.fn().mockResolvedValueOnce({subject:'u1'}).mockResolvedValue(null));render(localized(f,translateEnglish));
+ await screen.findByText('business');act(()=>{f.lifecycle.protect('未保存表单');f.lifecycle.unauthorized('/write');});
+ await screen.findByRole('heading',{name:'Sign-in expired'});
+ expect(screen.getByText('You have unsaved form. Save your work and record pending operation IDs before signing in again.')).toBeVisible();
+ expect(screen.getByText('business').closest('[hidden][inert]')).not.toBeNull();expect(f.replace).not.toHaveBeenCalled();
+ const confirm=vi.spyOn(window,'confirm').mockReturnValue(false);
+ try{
+  const link=screen.getByRole('link',{name:'Leave and sign in again'});expect(link.getAttribute('href')).toContain('returnUrl=');
+  fireEvent.click(link);expect(confirm).toHaveBeenCalledWith('Leave this page and sign in again? Save your work and record pending operation IDs first.');expect(f.replace).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true);fireEvent.click(link);expect(f.replace).toHaveBeenCalledOnce();expect(f.logout).not.toHaveBeenCalled();
+ }finally{confirm.mockRestore();}
+});
+test('empty translations retain original copy and never remove dirty-state protection',async()=>{
+ const f=fixture();f.lifecycle.protect('未保存表单');render(localized(f,()=>''));
+ await screen.findByRole('heading',{name:'登录已过期'});expect(screen.getByText(/当前有未保存表单/)).toBeVisible();
+ expect(screen.getByRole('link',{name:'确认离开并重新登录'})).toBeVisible();expect(f.replace).not.toHaveBeenCalled();expect(f.session).toHaveBeenCalledOnce();
+});
+test('missing adapter configuration can be translated without mounting business',()=>{
+ const f=fixture();render(<AuthBoundary lifecycle={f.lifecycle} navigation={f.navigation} brand="Product" target="/" translate={translateEnglish}><button>business</button></AuthBoundary>);
+ expect(screen.getByRole('heading',{name:'Sign-in is not configured'})).toBeVisible();expect(screen.queryByText('business')).toBeNull();expect(f.replace).not.toHaveBeenCalled();
+});
