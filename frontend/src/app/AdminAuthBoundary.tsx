@@ -1,3 +1,4 @@
+import { useI18n } from "@/lib/i18n"
 import { bindDraftOwner } from "@/lib/drafts"
 import { useEffect, useMemo, type ReactNode } from "react"
 import { useLocation } from "react-router"
@@ -10,6 +11,7 @@ import { subscribeSessionExpiry } from "@/lib/session-expiry"
 import { adminAuthLifecycle, adminAuthNavigation } from "@/lib/auth-lifecycle"
 export { adminAuthLifecycle, adminAuthNavigation } from "@/lib/auth-lifecycle"
 export default function AdminAuthBoundary({ children }: { children: ReactNode }) {
+  const { t } = useI18n()
   const client = useQueryClient(), location = useLocation()
   const adapter = useMemo<AuthAdapter<Session>>(() => ({
     session: signal => sessionApi.me(signal),
@@ -31,7 +33,9 @@ export default function AdminAuthBoundary({ children }: { children: ReactNode })
     },
   }), [client])
   useEffect(() => subscribeSessionExpiry(() => adminAuthLifecycle.unauthorized()), [])
-  return <AuthBoundary adapter={adapter} lifecycle={adminAuthLifecycle} navigation={adminAuthNavigation}
+  // Resume events are owned and merged by the shared boundary (revalidateOnResume);
+  // the duplicate app-level focus/pageshow probe is intentionally not restored.
+  return <AuthBoundary translate={t} adapter={adapter} lifecycle={adminAuthLifecycle} navigation={adminAuthNavigation}
     target={"/admin" + (location.pathname === "/" ? "/" : location.pathname) + location.search}
     revalidateOnResume recoveryPresentation="quiet"
     brand={<img src="/admin/pandaauth-logo-horizontal.png" alt="PandaAuth by PandaLabs" className="h-9 w-auto max-w-full object-contain"/>}>
