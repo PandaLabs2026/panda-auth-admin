@@ -26,7 +26,11 @@ export default function MetricCard({
         <div className="flex min-w-0 flex-col gap-1">
           <span className="text-[13px] text-muted-foreground">{title}</span>
           <strong className="text-2xl leading-tight font-semibold tabular-nums">
-            {typeof value === 'number' ? value.toLocaleString('zh-CN') : '—'}
+            {typeof value === 'number'
+              ? value.toLocaleString('zh-CN')
+              : typeof value === 'string' && value
+                ? value
+                : '—'}
           </strong>
           {delta != null && (
             <span

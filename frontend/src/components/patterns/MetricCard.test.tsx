@@ -20,10 +20,23 @@ describe('MetricCard', () => {
     expect(screen.getByText('较上期 -2.3%').className).toContain('text-destructive');
   });
 
-  test('delta 为 null 不渲染环比;非数值渲染占位长划', () => {
+  test('delta 为 null 不渲染环比;空值渲染占位长划', () => {
     const { rerender } = render(<MetricCard title="t" value={1} delta={null} />);
     expect(screen.queryByText(/较上期/)).not.toBeInTheDocument();
-    rerender(<MetricCard title="t" value="n/a" />);
+    rerender(<MetricCard title="t" value={null} />);
     expect(screen.getByText('—')).toBeInTheDocument();
   });
+});
+
+test.each(['1.2.3', 'Production', '2h 13m'])('显示字符串指标 %s', (value) => {
+  render(<MetricCard title="状态" value={value} />);
+  expect(screen.getByText(value)).toBeInTheDocument();
+});
+test.each([null, undefined, '', {}])('无有效指标时显示占位符 %s', (value) => {
+  render(<MetricCard title="状态" value={value} />);
+  expect(screen.getByText('—')).toBeInTheDocument();
+});
+test('显示零值', () => {
+  render(<MetricCard title="状态" value={0} />);
+  expect(screen.getByText('0')).toBeInTheDocument();
 });

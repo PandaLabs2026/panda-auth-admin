@@ -123,3 +123,30 @@ describe("AuditPage URL filters and states", () => {
     expect(tableContainer?.querySelector('[data-slot="skeleton"]')).toBeNull()
   })
 })
+
+describe("audit record context panel", () => {
+  it("opens an existing login record, closes it, and keeps the list and URL", async () => {
+    vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ items: [{ id: 9, userId: "u1", userName: "alice", clientId: null, ipAddress: "127.0.0.1", userAgent: null, succeeded: false, failureReason: "denied", createdAt: "2026-10-30T00:00:00Z" }], total: 1, page: 1, pageSize: 20 }))))
+    const user = userEvent.setup()
+    render(<Providers><AuditPage /><SearchParamsProbe /></Providers>)
+    const trigger = await screen.findByRole("button", { name: "查看日志详情 9" })
+    await user.click(trigger)
+    const panel = await screen.findByRole("dialog", { name: "日志详情" })
+    expect(within(panel).getByText("alice")).toBeInTheDocument()
+    expect(within(panel).getByText("denied")).toBeInTheDocument()
+    expect(screen.getByTestId("search-params").textContent).toBe("")
+    await user.click(within(panel).getByRole("button", { name: "关闭" }))
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "日志详情" })).not.toBeInTheDocument())
+    expect(trigger).toBeInTheDocument()
+  })
+})
+
+ it("shows an admin audit record without exposing the raw detail payload", async () => {
+   vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(json({ items: [{ id: 12, actorUserId: "u2", actorUserName: "bob", action: "user.freeze", targetType: "user", targetId: "u3", detail: "private-payload", ipAddress: null, createdAt: "2026-10-30T00:00:00Z" }], total: 1, page: 1, pageSize: 20 }))))
+   const user = userEvent.setup()
+   render(<Providers initialEntries={["/audit?tab=admin"]}><AuditPage /></Providers>)
+   await user.click(await screen.findByRole("button", { name: "查看日志详情 12" }))
+   const panel = await screen.findByRole("dialog", { name: "日志详情" })
+   expect(within(panel).getByText("bob")).toBeInTheDocument()
+   expect(within(panel).queryByText("private-payload")).not.toBeInTheDocument()
+ })

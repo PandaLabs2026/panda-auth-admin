@@ -294,5 +294,7 @@
   "未保存的建号表单": "an unsaved account creation form",
   "未保存的账号声明": "unsaved account claims",
   "进行中的管理操作": "an administrative operation in progress",
-  "结果待核实的管理操作": "an administrative operation with an uncertain outcome"
+  "结果待核实的管理操作": "an administrative operation with an uncertain outcome",
+  "查看日志详情 {id}": "View log details {id}",
+  "日志详情": "Log details"
 }

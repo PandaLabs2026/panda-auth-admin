@@ -2,10 +2,15 @@ import { useMemo } from 'react';
 import { cn } from 'cn';
 import { ArrowDown, ArrowUp, ArrowUpDown, Download, Inbox } from 'lucide-react';
 import {
-  getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel,
-  useReactTable,
+  createPaginatedRowModel,
+  createSortedRowModel,
+  rowPaginationFeature,
+  rowSortingFeature,
+  sortFn_alphanumeric,
+  sortFn_basic,
+  sortFn_text,
+  tableFeatures,
+  useTable,
 } from '@tanstack/react-table';
 import {
   Table,
@@ -91,6 +96,18 @@ export function paginationMeta(pageIndex: number, pageSize: number, totalRows: n
   return { totalPages: total, page, first, last, total: totalRows };
 }
 
+const dataTableFeatures = tableFeatures({
+  rowSortingFeature,
+  rowPaginationFeature,
+  sortedRowModel: createSortedRowModel(),
+  paginatedRowModel: createPaginatedRowModel(),
+  sortFns: {
+    alphanumeric: sortFn_alphanumeric,
+    basic: sortFn_basic,
+    text: sortFn_text,
+  },
+});
+
 export default function DataTable({
   headers,
   rows,
@@ -123,20 +140,16 @@ export default function DataTable({
       })),
     [headers],
   );
-  const table = useReactTable<Cell[]>({
+  const table = useTable({
+    features: dataTableFeatures,
     data: rows,
     columns,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-    ...(pageSize
-      ? {
-          getPaginationRowModel: getPaginationRowModel(),
-          initialState: { pagination: { pageSize } },
-        }
-      : {}),
+    // Missing pageSize preserves the complete row set, rather than the SDK default page.
+    manualPagination: !pageSize,
+    ...(pageSize ? { initialState: { pagination: { pageIndex: 0, pageSize } } } : {}),
   });
 
-  const sorting = table.getState().sorting;
+  const sorting = table.state.sorting;
   const sortOf = (i: number) => sorting.find((s) => s.id === String(i));
 
   if (!rows.length)
@@ -148,7 +161,7 @@ export default function DataTable({
     );
 
   const numeric = numericColumns(headers, rows);
-  const { pageIndex } = table.getState().pagination;
+  const { pageIndex } = table.state.pagination;
   const meta = paginationMeta(pageIndex, pageSize ?? rows.length, rows.length);
   const rowModel = table.getRowModel().rows;
 

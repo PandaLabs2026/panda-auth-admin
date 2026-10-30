@@ -1,4 +1,3 @@
-import { execSync } from "node:child_process"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { defineConfig } from "vitest/config"
@@ -7,19 +6,9 @@ import tailwindcss from "@tailwindcss/vite"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// 应用版本锚点(git describe):注入页脚供 drift 肉眼自查(模板 v0.2 起的约定)。
-const appVersion = (() => {
-  try {
-    return execSync("git describe --tags --always --dirty", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim()
-  } catch {
-    return "unversioned"
-  }
-})()
-
 // 对齐 panda-webapp 模式：构建产物直接落到 .NET BFF 的 wwwroot/admin。
 export default defineConfig({
   base: "/admin/",
-  define: { __APP_VERSION__: JSON.stringify(appVersion) },
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { "@": path.resolve(dirname, "./src") },
