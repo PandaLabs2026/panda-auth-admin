@@ -16,8 +16,11 @@ export default function AdminAuthBoundary({ children }: { children: ReactNode })
   const adapter = useMemo<AuthAdapter<Session>>(() => ({
     session: signal => sessionApi.me(signal),
     // Every session field is identity-derived; any drift remounts the workspace.
+    // 纯字符串数组(roles)按集合比较:投影顺序不稳定不应引发重挂。
     sameSession: (current, next) => {
-      const comparable = (session: Session) => Object.entries(session).sort(([a], [b]) => a.localeCompare(b))
+      const comparable = (session: Session) => Object.entries(session)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([key, value]) => [key, Array.isArray(value) && value.every(item => typeof item === 'string') ? [...value].sort() : value])
       return JSON.stringify(comparable(current)) === JSON.stringify(comparable(next))
     },
     status: error => error instanceof ApiError ? error.status ?? 0 : 0,

@@ -236,3 +236,13 @@ test('missing adapter configuration can be translated without mounting business'
  const f=fixture();render(<AuthBoundary lifecycle={f.lifecycle} navigation={f.navigation} brand="Product" target="/" translate={translateEnglish}><button>business</button></AuthBoundary>);
  expect(screen.getByRole('heading',{name:'Sign-in is not configured'})).toBeVisible();expect(screen.queryByText('business')).toBeNull();expect(f.replace).not.toHaveBeenCalled();
 });
+
+test('owning failure actions remain usable inside the auth context without mounting business',async()=>{
+ for(const status of [503,403]){
+  const f=fixture(vi.fn().mockRejectedValue({status}));const exit=vi.fn();
+  function LocalExit(){const auth=useAuthState();return <button onClick={()=>exit(auth.lifecycle?.paused())}>退出本地会话</button>;}
+  render(<AuthBoundary adapter={f.adapter} lifecycle={f.lifecycle} navigation={f.navigation} brand={<span>Product</span>} target="/" accessFailureActions={<LocalExit/>}><button>business</button></AuthBoundary>);
+  fireEvent.click(await screen.findByRole('button',{name:'退出本地会话'}));expect(exit).toHaveBeenCalledWith(true);
+  expect(screen.queryByText('business')).toBeNull();expect(f.replace).not.toHaveBeenCalled();cleanup();
+ }
+});

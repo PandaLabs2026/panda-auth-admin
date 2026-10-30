@@ -6,13 +6,13 @@ import type { AuthAdapter } from './types';
 import type { AuthLifecycle } from './lifecycle';
 import type { AuthNavigation } from './navigation';
 type State<S>={kind:'checking'|'ready'|'anonymous'|'unavailable'|'forbidden'|'loop'|'signed-out'|'logout-error'|'logging-out';session?:S;status?:number;handoff?:string;incomplete?:boolean};
-type Props<S>={adapter?:AuthAdapter<S>;lifecycle:AuthLifecycle;navigation:AuthNavigation;brand:ReactNode;target:string;terminal?:boolean;revalidateOnResume?:boolean;recoveryPresentation?:'restore'|'quiet';translate?:(message:string)=>string;children:ReactNode};
+type Props<S>={adapter?:AuthAdapter<S>;lifecycle:AuthLifecycle;navigation:AuthNavigation;brand:ReactNode;target:string;terminal?:boolean;revalidateOnResume?:boolean;recoveryPresentation?:'restore'|'quiet';translate?:(message:string)=>string;accessFailureActions?:ReactNode;children:ReactNode};
 export default function AuthBoundary<S>(props:Props<S>) {
  const text=(message:string)=>props.translate?.(message)||message;
  if(!props.adapter)return <AuthStatusPage brand={props.brand} title={text('登录配置未完成')} description={text('此应用尚未配置真实认证适配器，请联系管理员。')}/>;
  return <ConfiguredBoundary {...props} adapter={props.adapter}/>;
 }
-function ConfiguredBoundary<S>({adapter,lifecycle,navigation,brand,target,terminal=false,revalidateOnResume=false,recoveryPresentation,translate,children}:Props<S>&{adapter:AuthAdapter<S>}) {
+function ConfiguredBoundary<S>({adapter,lifecycle,navigation,brand,target,terminal=false,revalidateOnResume=false,recoveryPresentation,translate,accessFailureActions,children}:Props<S>&{adapter:AuthAdapter<S>}) {
  const text=(message:string)=>translate?.(message)||message;
  const stopped=terminal||navigation.wasSignedOut()||navigation.logoutPending();
  const [state,setState]=useState<State<S>>(() => ({kind:!terminal&&navigation.logoutPending()?'logout-error':stopped?'signed-out':'checking',incomplete:stopped&&!terminal}));
@@ -123,8 +123,8 @@ function ConfiguredBoundary<S>({adapter,lifecycle,navigation,brand,target,termin
  else if(state.kind==='loop')status=page('登录未完成',text('未能确认有效会话，或浏览器限制了自动跳转。请手动重试。'),login('重新登录'));
  else if(state.kind==='signed-out')status=page(state.incomplete?'当前应用已退出':'已退出登录',state.incomplete?text('当前应用已退出，身份服务的退出尚未确认。'):text('点击重新登录后可再次进入应用。'),<>{state.handoff&&<Button asChild><a href={state.handoff}>{text('完成身份服务退出')}</a></Button>}<Button asChild variant="outline"><a href={navigation.href(navigation.home)} onClick={event=>{event.preventDefault();navigation.start(navigation.home,true);}}>{text('重新登录')}</a></Button></>);
  else if(state.kind==='logout-error')status=page('退出结果未获确认',text('请求未得到完整确认，请重试完成退出；不要将此状态视为身份服务已退出。'),<><Button onClick={()=>{void logout();}}>{text('重试退出')}</Button><Button variant="outline" onClick={()=>{void checkLogout();}}>{text('重新检查退出状态')}</Button></>);
- else if(state.kind==='forbidden')status=page(state.status===421?'访问地址未登记':'此账号没有访问权限',text('请使用登记的访问地址并联系管理员确认权限。'),<Button variant="outline" onClick={retry}>{text('重新检查')}</Button>);
- else if(state.kind==='unavailable')status=page('暂时无法确认登录状态',text('服务暂时不可用，请稍后重试。'),<Button onClick={retry}>{text('重试')}</Button>);
+ else if(state.kind==='forbidden')status=page(state.status===421?'访问地址未登记':'此账号没有访问权限',text('请使用登记的访问地址并联系管理员确认权限。'),<><Button variant="outline" onClick={retry}>{text('重新检查')}</Button>{accessFailureActions}</>);
+ else if(state.kind==='unavailable')status=page('暂时无法确认登录状态',text('服务暂时不可用，请稍后重试。'),<><Button onClick={retry}>{text('重试')}</Button>{accessFailureActions}</>);
  if(recovering)status=<AuthStatusPage brand={brand} title={text('正在恢复访问…')} description={text(state.kind==='anonymous'?'正在前往认证…':'正在检查登录状态…')} busy reserveActions presentation={recoveryPresentation==='quiet'?'quiet':undefined}>{state.kind==='anonymous'&&login('继续登录')}</AuthStatusPage>;
  const active=state.kind==='ready'&&!paused,retain=entered.current&&(state.kind==='ready'||Boolean(protections))&&!stopped;
  return <AuthContext.Provider value={{session:active?state.session:undefined,lifecycle,logout,loggingOut:state.kind==='logging-out'}}>
