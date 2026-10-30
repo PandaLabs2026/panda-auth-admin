@@ -13,7 +13,7 @@ public static class AdminAuthPage
         var action = actionLabel ?? (returnToConsole ? "返回管理台" : "继续登录");
         return $$"""
 <!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="referrer" content="no-referrer"><title>{{WebUtility.HtmlEncode(title)}} · PandaAuth</title>
+<meta name="referrer" content="no-referrer"><title>PandaAuth 管理后台</title>
 <style>
 :root{color-scheme:light;font-family:system-ui,sans-serif;background:#f7f8fa;color:#20262e}
 *{box-sizing:border-box}body{margin:0;padding:clamp(1rem,5vw,4rem)}main{max-width:32rem;margin:5vh auto;background:white;border:1px solid #dce1e6;border-radius:1rem;padding:clamp(1.25rem,5vw,2.5rem);overflow-wrap:anywhere}
