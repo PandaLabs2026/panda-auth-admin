@@ -67,6 +67,7 @@ describe("AppShell wiring", () => {
     // 顶栏语言切换:EN ↔ 中文,持久化键保持 panda.admin.lang(存量用户语言选择不丢)。
     await user.click(screen.getByRole("button", { name: "切换语言" }))
     expect(localStorage.getItem("panda.admin.lang")).toBe("en")
+    expect(screen.getByRole("button", { name: "Switch language" })).toBeInTheDocument()
     expect(screen.getByText("Navigation")).toBeInTheDocument()
     expect(screen.queryByText("导航")).not.toBeInTheDocument()
   })
