@@ -14,6 +14,8 @@ The frontend is based on [panda-webapp-template](https://github.com/PandaLabs202
 
 Template alignment (v0.6.18, `537cf18dad30aa499ad27ecfbcca16f950db4eeb`): the sidebar, NavUser, MetricCard and DataTable follow the published template, including 220px desktop width and 2px menu spacing. Shared auth files are synchronized through the registered auth pipeline; `auth-ui-source.json` records their exact source. AppLayout retains product branding and BFF logout error handling, omits the template-version footer, and uses the current navigation title. The audit list opens a read-only ContextPanel using already visible fields; user and client administration retain their established guarded workspaces.
 
+The product-adapted AppLayout incorporates the `navigationLabel` contract from template v0.6.19 (`59e6dcbae38d56deb016ecf2c57e3a08719f6ceb`); AppShell supplies the localized label while the existing product adaptations remain in place.
+
 ## Current implementation and limitations
 
 The [backend](src/PandaAuth.Admin/Program.cs) runs as a first-party OIDC client: `GET /admin/challenge` is the authentication challenge endpoint (authorization code + PKCE), with cookie sessions and antiforgery tokens. The [login page](frontend/src/pages/login.tsx) at `/admin/login` navigates to the challenge endpoint — automatically when carrying a `returnUrl`; no credentials are entered on this site.
