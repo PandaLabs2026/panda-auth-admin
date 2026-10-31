@@ -68,6 +68,7 @@ export function AppShell() {
   return (
     <AppLayout
       navItems={navItems}
+      navigationLabel={t("导航")}
       title={t("管理后台")}
       brand={
         <img src="/admin/pandaauth-logo-horizontal.png" alt="PandaAuth by PandaLabs" className="h-9 w-auto max-w-full object-contain object-left" />

@@ -46,6 +46,7 @@ export interface NavItem {
 
 export default function AppLayout({
   navItems,
+  navigationLabel = '导航',
   title,
   brand,
   contentClassName,
@@ -53,6 +54,8 @@ export default function AppLayout({
   commandActions,
 }: {
   navItems: NavItem[];
+  /** 本地化侧栏分组标题；由使用方随语言切换传入。 */
+  navigationLabel?: string;
   title?: string;
   /** 品牌槽:整体替换侧栏头部品牌块(默认图标+「PandaLabs/Web 模板」双行文字),应用传完整品牌块。 */
   brand?: React.ReactNode;
@@ -92,7 +95,7 @@ export default function AppLayout({
         </SidebarHeader>
         <SidebarContent>
           <SidebarGroup>
-            <SidebarGroupLabel>导航</SidebarGroupLabel>
+            <SidebarGroupLabel>{navigationLabel}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {navItems.map(({ to, label, icon: Icon, end }) => (
