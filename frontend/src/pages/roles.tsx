@@ -248,9 +248,9 @@ export default function RolesPage() {
             ) : <p className="text-sm text-muted-foreground">{t("暂无自定义 Claims。")}</p>}
             {!claimsLoading && !claimsError && (
               <div className="grid gap-3 sm:grid-cols-[1.2fr_1fr_0.7fr_auto] sm:items-end">
-                <div className="grid gap-1.5"><Label htmlFor="claim-type">{t("类型")}</Label><Input id="claim-type" value={claimDraft.claimType} onChange={(event) => setClaimDraft({ ...claimDraft, claimType: event.target.value })} /></div>
-                <div className="grid gap-1.5"><Label htmlFor="claim-value">{t("值")}</Label><Input id="claim-value" value={claimDraft.claimValue} onChange={(event) => setClaimDraft({ ...claimDraft, claimValue: event.target.value })} /></div>
-                <div className="grid gap-1.5"><Label htmlFor="claim-scope">Scope</Label><Input id="claim-scope" value={claimDraft.scope} onChange={(event) => setClaimDraft({ ...claimDraft, scope: event.target.value })} /></div>
+                <div className="grid gap-1.5"><Label htmlFor="claim-type">{t("类型")}</Label><Input id="claim-type" disabled={claimsBusy} value={claimDraft.claimType} onChange={(event) => setClaimDraft({ ...claimDraft, claimType: event.target.value })} /></div>
+                <div className="grid gap-1.5"><Label htmlFor="claim-value">{t("值")}</Label><Input id="claim-value" disabled={claimsBusy} value={claimDraft.claimValue} onChange={(event) => setClaimDraft({ ...claimDraft, claimValue: event.target.value })} /></div>
+                <div className="grid gap-1.5"><Label htmlFor="claim-scope">Scope</Label><Input id="claim-scope" disabled={claimsBusy} value={claimDraft.scope} onChange={(event) => setClaimDraft({ ...claimDraft, scope: event.target.value })} /></div>
                 <Button disabled={claimsBusy} onClick={() => void addClaim()}>{t("添加")}</Button>
               </div>
             )}
