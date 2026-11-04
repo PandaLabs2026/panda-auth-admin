@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react"
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { Providers } from "@/test/utils"
@@ -6,6 +6,54 @@ import RolesPage from "./roles"
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } })
 afterEach(() => { cleanup(); sessionStorage.clear(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
+
+describe("role page busy freeze (FilterToolbar)", () => {
+  it("keeps the claims panel mounted when a pre-busy search would filter the role out", async () => {
+    vi.useFakeTimers()
+    try {
+      let finish!: (value: Response) => void
+      const pendingPost = new Promise<Response>((resolve) => { finish = resolve })
+      const fetchMock = vi.fn((path: string, options?: RequestInit) => {
+        if (path === "/admin/api/antiforgery") return Promise.resolve(json({ token: "test-csrf" }))
+        if (path.startsWith("/admin/api/roles?")) {
+          if (path.includes("query=")) return Promise.resolve(json({ items: [], total: 0, page: 1, pageSize: 20 }))
+          return Promise.resolve(json({ items: [{ id: "r1", name: "admin" }], total: 1, page: 1, pageSize: 20 }))
+        }
+        if (path === "/admin/api/roles/r1/claims" && options?.method === "POST") return pendingPost
+        if (path === "/admin/api/roles/r1/claims") return Promise.resolve(json([]))
+        throw new Error(`unexpected request ${path}`)
+      })
+      vi.stubGlobal("fetch", fetchMock)
+      render(<Providers><RolesPage /></Providers>)
+      const flush = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(10) }) }
+      await flush(); await flush(); await flush()
+
+      fireEvent.click(screen.getByRole("button", { name: "admin" }))
+      await flush(); await flush()
+      expect(screen.getByLabelText("类型")).toBeInTheDocument()
+
+      // busy 前输入搜索(节流 300ms 未落盘)并填好 Claim,随后点添加进入 busy。
+      fireEvent.change(screen.getByTestId("filter-search"), { target: { value: "zzz" } })
+      fireEvent.change(screen.getByLabelText("值"), { target: { value: "v" } })
+      fireEvent.click(screen.getByRole("button", { name: "添加" }))
+      await flush()
+
+      // busy 期:节流落盘被门控,URL 不写、列表不重取、面板不收起;搜索输入冻结。
+      act(() => { vi.advanceTimersByTime(400) })
+      await flush(); await flush()
+      expect(screen.getByLabelText("类型")).toBeInTheDocument()
+      expect(fetchMock.mock.calls.some(([path]) => String(path).includes("query=zzz"))).toBe(false)
+      expect(screen.getByTestId("filter-search")).toBeDisabled()
+
+      // 完成添加:busy 结束后搜索解冻,冻结前输入的值统一落盘(面板此后按既有语义响应)。
+      await act(async () => { finish(json({ id: 1 })); await pendingPost })
+      await flush(); await flush()
+      expect(screen.getByTestId("filter-search")).toBeEnabled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+})
 
 describe("role claim delete busy guard", () => {
   it("disables row delete triggers while an add-claim request is in flight", async () => {
