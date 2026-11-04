@@ -26,19 +26,26 @@ export default function FilterToolbar({
   searchPlaceholder = '搜索…',
   selects = [],
   right,
+  disabled = false,
 }: {
   searchKey?: string;
   searchPlaceholder?: string;
   selects?: FilterSelectConfig[];
   /** 右侧插槽（如「新建」按钮）。 */
   right?: ReactNode;
+  /** true=冻结：输入与下拉禁用,节流中的待落盘值不写 URL（解冻后统一落盘）——
+   *  消费方在写操作在途时传入,避免忙期 URL 变化引发数据面板中途收起。 */
+  disabled?: boolean;
 }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [term, setTerm] = useState(searchParams.get(searchKey) ?? '');
   const debounced = useDebouncedValue(term, 300);
 
-  // 输入本地即时回显,节流后落 URL;清空时移除键,保持 URL 干净
+  // 输入本地即时回显,节流后落 URL;清空时移除键,保持 URL 干净。
+  // 冻结期跳过写入:输入已禁用,冻结前已输入的待落盘值顺延到解冻后统一落盘,
+  // 保证忙期 URL(消费方的查询状态)不变化。
   useEffect(() => {
+    if (disabled) return;
     setSearchParams(
       (prev) => {
         const next = new URLSearchParams(prev);
@@ -48,7 +55,7 @@ export default function FilterToolbar({
       },
       { replace: true },
     );
-  }, [debounced, searchKey, setSearchParams]);
+  }, [debounced, searchKey, setSearchParams, disabled]);
 
   const setSelect = (key: string, value: string) => {
     setSearchParams(
@@ -71,10 +78,11 @@ export default function FilterToolbar({
         className="sm:max-w-xs"
         aria-label={searchPlaceholder}
         data-testid="filter-search"
+        disabled={disabled}
       />
       {selects.map(({ key, label, options }) => (
         <Select key={key} value={searchParams.get(key) ?? 'all'} onValueChange={(v) => setSelect(key, v)}>
-          <SelectTrigger className="w-full sm:w-40" aria-label={label}>
+          <SelectTrigger className="w-full sm:w-40" aria-label={label} disabled={disabled}>
             <SelectValue placeholder={label} />
           </SelectTrigger>
           <SelectContent>

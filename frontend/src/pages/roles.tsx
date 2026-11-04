@@ -157,6 +157,7 @@ export default function RolesPage() {
     <div className="space-y-6">
       <FilterToolbar
         searchPlaceholder={t("搜索角色")}
+        disabled={claimsBusy}
         right={result && <span className="text-sm text-muted-foreground">{t("共 {total} 个角色", { total: result.total })}</span>}
       />
 
