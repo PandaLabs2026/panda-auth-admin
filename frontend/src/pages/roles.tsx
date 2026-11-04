@@ -136,13 +136,18 @@ export default function RolesPage() {
     }
   }
 
+  // 删除与添加同属 claims 写操作,统一纳入 claimsBusy:在途期间所有 claims 写入口
+  // (行内删除确认、添加)与角色切换一并禁用,避免并发删除/添加。
   async function removeClaim(claim: RoleClaim) {
     if (!roleId) return
+    setClaimsBusy(true)
     try {
       await apiSend("DELETE", `${claimsPath(roleId)}/${claim.id}`)
       await queryClient.invalidateQueries({ queryKey: ["roles-claims", roleId] })
     } catch (cause) {
       throw toUserMessage(cause)
+    } finally {
+      setClaimsBusy(false)
     }
   }
 
@@ -228,6 +233,7 @@ export default function RolesPage() {
                         <TableCell className="px-3 py-2 font-mono text-xs">{claim.scope}</TableCell>
                         <TableCell className="px-3 py-2 text-right">
                           <ConfirmAction
+                            disabled={claimsBusy}
                             trigger={
                               <Button variant="outline" size="sm">
                                 {t("删除")}
