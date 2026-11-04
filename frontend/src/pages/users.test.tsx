@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react"
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { Providers } from "@/test/utils"
 import { afterEach, describe, expect, it, vi } from "vitest"
@@ -163,5 +163,91 @@ describe("UsersPage long identifiers", () => {
     expect(await screen.findByText(longId)).toBeInTheDocument()
     const tableContainer = container.querySelector('[data-slot="table-container"]')
     expect(tableContainer).toHaveClass("overflow-x-auto")
+  })
+})
+
+describe("UsersPage claim delete busy guard", () => {
+  const userClaims = [
+    { id: 1, userId: "u-1", claimType: "panda:a", claimValue: "v1", scope: "api" },
+    { id: 2, userId: "u-1", claimType: "panda:b", claimValue: "v2", scope: "api" },
+  ]
+
+  it("disables row delete triggers while an add-claim request is in flight", async () => {
+    let finish!: (value: Response) => void
+    const pendingPost = new Promise<Response>((resolve) => { finish = resolve })
+    let claims = userClaims
+    const fetchMock = vi.fn((path: string, options?: RequestInit) => {
+      if (path === "/admin/api/antiforgery") return Promise.resolve(json({ token: "csrf-token" }))
+      if (path.startsWith("/admin/api/users?")) return Promise.resolve(json(list))
+      if (path === "/admin/api/users/u-1") return Promise.resolve(json(detail("u-1", "alice")))
+      if (path === "/admin/api/users/u-1/sessions") return Promise.resolve(json([]))
+      if (path === "/admin/api/users/u-1/claims" && options?.method === "POST") {
+        claims = [...claims, { id: 3, userId: "u-1", claimType: "panda:c", claimValue: "v3", scope: "api" }]
+        return pendingPost
+      }
+      if (path === "/admin/api/users/u-1/claims") return Promise.resolve(json(claims))
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const user = userEvent.setup()
+
+    render(<Providers><UsersPage /></Providers>)
+    await user.click(await screen.findByText("alice"))
+
+    const triggers = await screen.findAllByRole("button", { name: "删除" })
+    expect(triggers).toHaveLength(2)
+
+    await user.type(await screen.findByLabelText("值"), "v3")
+    await user.click(screen.getByRole("button", { name: "添加" }))
+
+    // 添加请求在途:行内删除确认入口一并冻结
+    expect(screen.getByRole("button", { name: "添加" })).toBeDisabled()
+    for (const trigger of screen.getAllByRole("button", { name: "删除" })) {
+      expect(trigger).toBeDisabled()
+    }
+
+    await act(async () => { finish(json({ id: 3, userId: "u-1", claimType: "panda:c", claimValue: "v3", scope: "api" })); await pendingPost })
+    await waitFor(() => expect(screen.getByRole("button", { name: "添加" })).toBeEnabled())
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "删除" })).toHaveLength(3))
+  })
+
+  it("freezes add entry and other delete triggers while a delete request is in flight", async () => {
+    let finish!: (value: Response) => void
+    const pendingDelete = new Promise<Response>((resolve) => { finish = resolve })
+    let claims = userClaims
+    const fetchMock = vi.fn((path: string, options?: RequestInit) => {
+      if (path === "/admin/api/antiforgery") return Promise.resolve(json({ token: "csrf-token" }))
+      if (path.startsWith("/admin/api/users?")) return Promise.resolve(json(list))
+      if (path === "/admin/api/users/u-1") return Promise.resolve(json(detail("u-1", "alice")))
+      if (path === "/admin/api/users/u-1/sessions") return Promise.resolve(json([]))
+      if (path === "/admin/api/users/u-1/claims/1" && options?.method === "DELETE") {
+        claims = claims.filter((claim) => claim.id !== 1)
+        return pendingDelete
+      }
+      if (path === "/admin/api/users/u-1/claims") return Promise.resolve(json(claims))
+      return Promise.reject(new Error(`unexpected request: ${path}`))
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    const user = userEvent.setup()
+
+    render(<Providers><UsersPage /></Providers>)
+    await user.click(await screen.findByText("alice"))
+
+    const triggers = await screen.findAllByRole("button", { name: "删除" })
+    expect(triggers).toHaveLength(2)
+    // 对话框为 Radix modal,打开后页面内容对 getByRole 不可见——先取引用再断言。
+    const addButton = screen.getByRole("button", { name: "添加" })
+    await user.click(triggers[0]!)
+    await user.click(await screen.findByTestId("confirm-action-confirm"))
+
+    // 删除请求在途:另一行删除入口与添加按钮均禁用(防重入)
+    expect(screen.getByTestId("confirm-action-confirm")).toBeDisabled()
+    expect(addButton).toBeDisabled()
+    expect(triggers[1]).toBeDisabled()
+
+    await act(async () => { finish(json(null)); await pendingDelete })
+    await waitFor(() => expect(screen.getByRole("button", { name: "添加" })).toBeEnabled())
+    expect(screen.queryByText("panda:a")).not.toBeInTheDocument()
+    expect(screen.getByText("panda:b")).toBeInTheDocument()
   })
 })
