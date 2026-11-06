@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/capacity-build.mjs",
+    "test:capacity": "node --test scripts/test-capacity-build.mjs",
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "lint": "eslint .",

@@ -13,7 +13,7 @@ WORKDIR /src/panda-auth-admin/frontend
 COPY panda-auth-admin/frontend/package.json panda-auth-admin/frontend/package-lock.json ./
 RUN npm ci
 COPY panda-auth-admin/frontend/ .
-RUN npm run build
+RUN ./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build
 
 # ================= 后端构建 =================
 # 基础镜像 digest 钉值，原 tag：mcr.microsoft.com/dotnet/sdk:10.0（2026-10-06 解析）
