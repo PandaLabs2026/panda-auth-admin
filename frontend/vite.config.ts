@@ -1,13 +1,22 @@
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { execSync } from "node:child_process"
 import { defineConfig } from "vitest/config"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// 应用版本锚点(git describe)：正典 AppLayout 的版本页脚(showcase opt-in)与
+// 正典契约测试消费；应用实现默认不渲染页脚，仅作 drift 肉眼自查锚点。
+const appVersion = (() => {
+  try { return execSync("git describe --tags --always --dirty", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim() }
+  catch { return "unversioned" }
+})()
+
 // 对齐 panda-webapp 模式：构建产物直接落到 .NET BFF 的 wwwroot/admin。
 export default defineConfig({
+  define: { __APP_VERSION__: JSON.stringify(appVersion) },
   base: "/admin/",
   plugins: [react(), tailwindcss()],
   resolve: {

@@ -2,6 +2,7 @@ import { useAuthState } from "@/components/patterns/auth/context"
 import { useMutation, useQuery } from "@tanstack/react-query"
 import { fetchWithTimeout } from "@/lib/fetch-with-timeout"
 import { problemDetailsError } from "@/lib/api"
+import { notify } from "@/lib/notify"
 
 /**
  * 认证会话（真实 BFF 版，对齐模板 v0.5.0 会话层契约）：
@@ -123,5 +124,10 @@ export function useSession() {
 
 export function useLogout() {
   const auth = useAuthState()
-  return useMutation({ mutationFn: () => auth.lifecycle ? auth.logout() : sessionApi.logout() })
+  return useMutation({
+    mutationFn: () => auth.lifecycle ? auth.logout() : sessionApi.logout(),
+    // BFF 登出失败必须显式告知（会话可能未确认注销）；正典 AppLayout 裸调 mutate，
+    // 错误面由应用登出钩子自己承担。
+    onError: (error) => notify.failure(error, "退出登录失败；当前会话未确认已注销。"),
+  })
 }

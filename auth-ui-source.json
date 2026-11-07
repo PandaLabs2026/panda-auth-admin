@@ -2,8 +2,8 @@
   "schema": 1,
   "repository": "PandaLabs2026/panda-webapp-template",
   "consumer": "panda-auth-admin",
-  "version": "v0.6.18",
-  "commit": "537cf18dad30aa499ad27ecfbcca16f950db4eeb",
+  "version": "v0.6.20",
+  "commit": "c8e265e10ada01808837ab503f4ce5d070fa5e43",
   "files": {
     "frontend/src/components/patterns/auth/AuthBoundary.test.tsx": "13f86839591f5f427aed3a98a76ed0a2d341cc24024845a5b413eb3f6ac8197d",
     "frontend/src/components/patterns/auth/AuthBoundary.tsx": "1e51a1b146a1329fb5cc2373626c370f64826fab3f1c1d6f179a518666a12b29",
