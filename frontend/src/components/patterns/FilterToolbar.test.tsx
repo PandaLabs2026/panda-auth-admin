@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { useSearchParams } from 'react-router';
 import { MemoryRouter } from 'react-router';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import FilterToolbar from './FilterToolbar';
 
 // 筛选工具栏契约:下拉筛选立即落 URL、'all' 哨兵不落键;disabled 冻结期 URL 不写。

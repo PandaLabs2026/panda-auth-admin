@@ -59,7 +59,7 @@ describe("role claim delete busy guard", () => {
   it("disables row delete triggers while an add-claim request is in flight", async () => {
     let finish!: (value: Response) => void
     const pendingPost = new Promise<Response>((resolve) => { finish = resolve })
-    let claims = [{ id: 1, roleId: "r1", claimType: "panda:old", claimValue: "v1", scope: "api" }]
+    const claims = [{ id: 1, roleId: "r1", claimType: "panda:old", claimValue: "v1", scope: "api" }]
     vi.stubGlobal("fetch", vi.fn((path: string, options?: RequestInit) => {
       if (path === "/admin/api/antiforgery") return Promise.resolve(json({ token: "test-csrf" }))
       if (path.startsWith("/admin/api/roles?")) return Promise.resolve(json({ items: [{ id: "r1", name: "admin" }], total: 1, page: 1, pageSize: 20 }))

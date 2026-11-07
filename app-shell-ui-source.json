@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "repository": "PandaLabs2026/panda-webapp-template",
+  "consumer": "panda-auth-admin",
+  "version": "v0.6.20",
+  "commit": "c8e265e10ada01808837ab503f4ce5d070fa5e43",
+  "files": {
+    "frontend/src/components/patterns/AppLayout.tsx": "3fd7089c78cde0c7bf48592d0d550ff6d104172a8b2ff9dd6a94869f42689935",
+    "frontend/src/components/patterns/AppLayout.test.tsx": "346a6650aa1dd7729e0bd270e647e94e5e6e8fc8e03b40a1d2d2f8fe3e8854fd",
+    "frontend/src/components/patterns/NavUser.tsx": "1cab9adb1f10df727a83b4da19ec57d21b0cac69bc45b056ad3aa7b94cfc9e69",
+    "frontend/src/components/patterns/NavUser.test.tsx": "7bc4da2d221c1816429ab096777ad0b2f4f11d88b61ad24996c90fe4ec52b3ff",
+    "frontend/src/components/patterns/MetricCard.tsx": "568c0d2f81a0d37e6b5d3ab0abc9f7b15fb0e4c5840b1433f4371c9be8aca764",
+    "frontend/src/components/patterns/MetricCard.test.tsx": "20c9735c616166045aaeaf1b27ed80bd287f9082af051aa6a733b28aed2a5375",
+    "frontend/src/components/patterns/DataTable.tsx": "f65ccd3ddb5c73d648d39c8e6a7cbc29e4fc19bed5ce6d8c869fe235eccc62e2",
+    "frontend/src/components/patterns/DataTable.test.ts": "d6f4a9299f856544dabd2429159d331fe6a989b0e42bce7c62f64ce36533db74",
+    "frontend/src/components/patterns/DataTable.test.tsx": "bbe3aaf8707e138e1e2a6b979321a5068f8a3dd9c32a8f32cec8793f4940a699",
+    "frontend/src/components/patterns/DataTableV9.test.tsx": "2ef3653a0201c1dc61fa813172c211d59f97fe7a71c499069a0a921d6a833e4f",
+    "frontend/src/components/patterns/PageHeader.tsx": "94ae0977b896b371b132d797a0d90583ee3aa7a11d2f35d16fa8ecc65fe23c77",
+    "frontend/src/components/patterns/PageHeader.test.tsx": "5503d8bd427bc6a095257a65b39d9399b46e36e1bbfc7b38bc4287a2f42d756b",
+    "frontend/src/components/patterns/ErrorBoundary.tsx": "5029bb54edafb38644b1afc36305ae6e926bada0b3089f284b2605a99249a8dc",
+    "frontend/src/components/patterns/ErrorBoundary.test.tsx": "4d64bc4f1ac5934fbb60d5d9188ee76a8d316e061e7843799e417d674c4afc53",
+    "frontend/src/components/patterns/DataState.tsx": "1fc71e0aebf44e50e4db74026a192b5d752e0fb480871e4b503d8491f6a847f7",
+    "frontend/src/components/patterns/DataState.test.tsx": "ce8b3f293f4227c7a816bed2fbc1f3565813ce7321530415af43c0fe8f857c32",
+    "frontend/src/components/patterns/CommandPalette.tsx": "0add169f36dd355a7909def3da6152c84832bfa9bd775b6a8e6de59f4fa46c38",
+    "frontend/src/components/patterns/ContextPanel.tsx": "3b9e96e5b3de0c85207143d3d552ccc4530ca3bb2d7ff30fe79fd8802e9e0fdc",
+    "frontend/src/components/patterns/ContextPanel.test.tsx": "1859e518f0f56a87d34cb2dea23437bf430d52ee0a2b39e055d49a8f819b18dc",
+    "frontend/src/components/patterns/context-panel-guard.ts": "4eaefe74b28a025bdc59b87918936de3f0b149bee0b58f5bb65ed5a74f7da258",
+    "frontend/src/components/ui/sidebar.tsx": "291d90c4178014f48817dbb1ca8c23af62667cd28eaae9c93023b00045b772e1",
+    "frontend/src/components/ui/sidebar.test.tsx": "e401d6cfff8b2a901444f3bf82d07bbb92f6637a70584a5abbe3fd73a498cb86",
+    "frontend/src/components/ui/command.tsx": "b38c664eb9e3e66608be54e80ac1216e83297f21ccf610d25db2b433147e4bf0",
+    "frontend/src/components/ui/sonner.tsx": "5d4f56e620548fbb9cc1b07dfe61f837d26fbcd73c494900e654cdba23a3c589"
+  }
+}

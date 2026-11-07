@@ -19,11 +19,11 @@ import {
   SidebarTrigger,
 } from '@/components/ui/sidebar';
 import NavUser from './NavUser';
+import { authMode } from '@/lib/auth-mode';
 import CommandPalette from './CommandPalette';
 import { Toaster } from '@/components/ui/sonner';
 import { DropdownMenuItem } from '@/components/ui/dropdown-menu';
 import { useLogout, useSession } from '@/lib/auth';
-import { notify } from '@/lib/notify';
 
 /**
  * 统一后台骨架（v0.2 整装，v0.4.3 内容区全宽化）：侧栏 + 固定顶栏 + Outlet 内容区。
@@ -31,8 +31,9 @@ import { notify } from '@/lib/notify';
  * 用户身份区固定在 SidebarFooter(NavUser 接 useSession/useLogout)。
  * 内容区默认全宽（后台表格/看板优先）,阅读型页面自行收窄:
  * 应用级用 contentClassName,页面级在页面根节点加 max-w-* mx-auto。
- * 内容区隔离层级,顶栏与固定列不能越过侧栏。
- * overflow-x-clip 约束文档宽度,横向溢出只允许发生在页面自己的
+ * SidebarInset 隔离内容区层级,表格固定列/表头不能越过侧栏。
+ * overflow-x-clip 是骨架完整性约束:文档横向滚动会令顶栏侵入侧栏区域;
+ * 故横向溢出只允许发生在页面自己的
  * 滚动容器内(DataTable/pre 等),超宽杂散内容在内容区边缘裁剪而不撑宽文档。
  */
 
@@ -52,6 +53,8 @@ export default function AppLayout({
   contentClassName,
   headerActions,
   commandActions,
+  userMenu,
+  showVersionFooter = false,
 }: {
   navItems: NavItem[];
   /** 本地化侧栏分组标题；由使用方随语言切换传入。 */
@@ -65,15 +68,24 @@ export default function AppLayout({
   headerActions?: React.ReactNode;
   /** 命令面板附加动作（登出/切语言等）；页面导航自动来自 navItems。 */
   commandActions?: React.ComponentProps<typeof CommandPalette>['actions'];
+  /** 用户菜单附加项（如账户中心外链），插在账号设置与退出之间；由使用方传入。 */
+  userMenu?: React.ReactNode;
+  /** 模板版本页脚属 showcase 演示职责,默认不渲染(应用实现不带模板版本号);
+      模板自身的 showcase 显式开启。 */
+  showVersionFooter?: boolean;
 }) {
   const { data: session } = useSession();
   const logout = useLogout();
   const [commandOpen, setCommandOpen] = useState(false);
+  // Topbar 跟随当前页面:与侧栏同一份 navItems 派生(匹配语义对齐 NavLink
+  // ——end 精确相等,否则前缀+段边界),未命中(如 404)回退应用名 title。
   const { pathname } = useLocation();
-  const active = navItems.find(({ to, end }) => end ? pathname === to : pathname === to || pathname.startsWith(to + '/'));
+  const active = navItems.find(({ to, end }) =>
+    end ? pathname === to : pathname === to || pathname.startsWith(to + '/'),
+  );
   return (
     <SidebarProvider>
-      <Sidebar collapsible="icon" className="z-40">
+      <Sidebar collapsible="icon">
         <SidebarHeader>
           <SidebarMenu>
             <SidebarMenuItem>
@@ -118,13 +130,10 @@ export default function AppLayout({
         </SidebarContent>
         <SidebarFooter>
           <NavUser
+            avatarUrl={authMode === 'demo' && session ? `${import.meta.env.BASE_URL}demo-avatar.png` : undefined}
             name={session?.displayName ?? '未登录'}
             email={session?.email}
-            onLogout={() =>
-              logout.mutate(undefined, {
-                onError: (error) => notify.failure(error, "退出登录失败；当前会话未确认已注销。"),
-              })
-            }
+            onLogout={() => logout.mutate()}
           >
             {/* 账号自助外链模式:身份属性(姓名/邮箱/密码/MFA)唯一正本在 IDP,
                 应用只经会话下发的 accountEntryUrl 跳转;改完回应用,会话到下次刷新才更新。 */}
@@ -133,6 +142,7 @@ export default function AppLayout({
                 <a href={session.accountEntryUrl} target="_blank" rel="noopener noreferrer"><UserRoundCog aria-hidden="true" />账号设置</a>
               </DropdownMenuItem>
             )}
+            {userMenu}
           </NavUser>
         </SidebarFooter>
       </Sidebar>
@@ -141,13 +151,18 @@ export default function AppLayout({
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-4" />
           <span className="min-w-0 truncate text-sm font-medium">{active?.label ?? title ?? '应用名'}</span>
-          <div className="ml-auto flex items-center gap-1" data-testid="header-actions">
+          <div className="ml-auto flex shrink-0 items-center gap-1" data-testid="header-actions">
             {headerActions}
           </div>
         </header>
         <main className={cn('flex w-full min-w-0 flex-1 flex-col gap-6 overflow-x-clip p-6', contentClassName)}>
           <Outlet />
         </main>
+        {showVersionFooter && (
+          <footer className="border-t px-4 py-2 text-[11px] text-muted-foreground">
+            模板版本 {__APP_VERSION__}
+          </footer>
+        )}
       </SidebarInset>
       <CommandPalette navItems={navItems} actions={commandActions} open={commandOpen} onOpenChange={setCommandOpen} />
       {/* 全局反馈出口:所有 notify 调用的渲染终点,布局挂载一次 */}
