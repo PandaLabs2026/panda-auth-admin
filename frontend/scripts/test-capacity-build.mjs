@@ -45,3 +45,44 @@ test('Docker frontend runs the same build tools without host-only meta',()=>{
   assert.match(docker,/^RUN \.\/node_modules\/\.bin\/tsc --noEmit && \.\/node_modules\/\.bin\/vite build$/m);
   assert.doesNotMatch(docker,/^RUN npm run build$/m);
 });
+
+function installFixture(t){
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'auth-admin-install-capacity-'));
+  t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+  return {dir,env:{...process.env,npm_config_cache:path.join(dir,'cache')}};
+}
+for(const command of ['ci','install'])test(`npm ${command} obeys capacity refusal`,{skip:process.platform==='win32'},t=>{
+  const f=installFixture(t),bin=path.join(f.dir,'bin');fs.mkdirSync(bin);
+  fs.mkdirSync(path.join(f.dir,'scripts'));
+  fs.copyFileSync(path.join(frontend,'scripts/capacity-build.mjs'),path.join(f.dir,'scripts/capacity-build.mjs'));
+  const manifest=JSON.parse(fs.readFileSync(path.join(frontend,'package.json'),'utf8'));
+  fs.writeFileSync(path.join(f.dir,'package.json'),JSON.stringify({name:'install-fixture',version:'1.0.0',scripts:{preinstall:manifest.scripts.preinstall}}));
+  fs.writeFileSync(path.join(f.dir,'package-lock.json'),JSON.stringify({name:'install-fixture',version:'1.0.0',lockfileVersion:3,packages:{'':{name:'install-fixture',version:'1.0.0'}}}));
+  fs.writeFileSync(path.join(bin,'python3'),'#!/bin/sh\nprintf called > "$GATE_LOG"\nexit 17\n',{mode:0o755});
+  const gate=path.join(f.dir,'gate');
+  const result=spawnSync('npm',[command,'--offline','--no-audit','--no-fund'],{cwd:f.dir,encoding:'utf8',env:{...f.env,PATH:bin+path.delimiter+process.env.PATH,GATE_LOG:gate}});
+  assert.equal(result.status,17,result.stdout+result.stderr);
+  assert.equal(fs.readFileSync(gate,'utf8'),'called');
+});
+test('container manifest-only install preserves dependency lifecycle scripts',{skip:process.platform==='win32'},t=>{
+  const f=installFixture(t),directory=path.join(f.dir,'container'),dependency=path.join(directory,'dependency');
+  fs.mkdirSync(dependency,{recursive:true});
+  fs.writeFileSync(path.join(dependency,'package.json'),JSON.stringify({name:'capacity-install-fixture',version:'1.0.0',
+    scripts:{install:'node -e "require(\'fs\').writeFileSync(\'installed\',\'yes\')"'}}));
+  const run=(command,args,cwd=directory)=>spawnSync(command,args,{cwd,env:f.env,encoding:'utf8'});
+  let result=run('npm',['pack','--ignore-scripts','--offline','--pack-destination',directory],dependency);
+  assert.equal(result.status,0,result.stdout+result.stderr);
+  const manifest=JSON.parse(fs.readFileSync(path.join(frontend,'package.json'),'utf8'));
+  fs.writeFileSync(path.join(directory,'package.json'),JSON.stringify({name:'container-fixture',version:'1.0.0',
+    scripts:{preinstall:manifest.scripts.preinstall},allowScripts:{'file:capacity-install-fixture-1.0.0.tgz':true},
+    dependencies:{'capacity-install-fixture':'file:capacity-install-fixture-1.0.0.tgz'}}));
+  result=run('npm',['install','--package-lock-only','--ignore-scripts','--offline','--no-audit','--no-fund']);
+  assert.equal(result.status,0,result.stdout+result.stderr);
+  const docker=fs.readFileSync(path.join(root,'Dockerfile'),'utf8');
+  const install=docker.split('\n').find(line=>line.startsWith('RUN ')&&line.includes('npm ci'));
+  assert.ok(install,'Dockerfile npm installation command');
+  result=run('sh',['-c',install.slice(4)+' --offline']);
+  assert.equal(result.status,0,result.stdout+result.stderr);
+  assert.ok(fs.existsSync(path.join(directory,'node_modules/capacity-install-fixture/installed')),result.stdout+result.stderr);
+  assert.equal(fs.readFileSync(path.join(directory,'node_modules/capacity-install-fixture/installed'),'utf8'),'yes');
+});
