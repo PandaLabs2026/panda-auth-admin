@@ -29,7 +29,7 @@ PandaAuth 管理后台，由 .NET 10 BFF 与 React 19 前端组成。生产路�
 ```bash
 dotnet build PandaAuth.Admin.slnx
 cd frontend
-npm ci
+npm run deps:ci
 npm run build
 cd ..
 dotnet run --project src/PandaAuth.Admin

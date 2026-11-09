@@ -11,7 +11,7 @@
 ```bash
 dotnet build PandaAuth.Admin.slnx
 cd frontend
-npm ci
+npm run deps:ci
 npm run build
 ```
 
