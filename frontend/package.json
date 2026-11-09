@@ -4,7 +4,8 @@
   "version": "0.4.0",
   "type": "module",
   "scripts": {
-    "preinstall": "node scripts/capacity-build.mjs",
+    "deps:ci": "node scripts/capacity-build.mjs && npm ci",
+    "deps:install": "node scripts/capacity-build.mjs && npm install",
     "dev": "vite",
     "prebuild": "node scripts/capacity-build.mjs",
     "test:capacity": "node --test scripts/test-capacity-build.mjs",

@@ -33,7 +33,7 @@ Use Node 24 and npm for the frontend, matching the Docker build environment. The
 ```bash
 dotnet build PandaAuth.Admin.slnx
 cd frontend
-npm ci
+npm run deps:ci
 npm run build
 cd ..
 dotnet run --project src/PandaAuth.Admin
@@ -63,3 +63,5 @@ Production topology and release commands are maintained in the sibling meta repo
 and `PANDA_AUTH_TRUSTED_PROXY` to the allocation's exact IPv4 network gateway.
 Subnet peers and loopback are not trusted in bridge mode. The application's image defaults
 are development defaults, not production port assignments.
+
+Dependency updates use `npm run deps:install`. Both `deps:ci` and `deps:install` run capacity preflight before invoking npm.

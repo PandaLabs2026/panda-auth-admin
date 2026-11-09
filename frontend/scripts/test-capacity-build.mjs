@@ -51,19 +51,6 @@ function installFixture(t){
   t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
   return {dir,env:{...process.env,npm_config_cache:path.join(dir,'cache')}};
 }
-for(const command of ['ci','install'])test(`npm ${command} obeys capacity refusal`,{skip:process.platform==='win32'},t=>{
-  const f=installFixture(t),bin=path.join(f.dir,'bin');fs.mkdirSync(bin);
-  fs.mkdirSync(path.join(f.dir,'scripts'));
-  fs.copyFileSync(path.join(frontend,'scripts/capacity-build.mjs'),path.join(f.dir,'scripts/capacity-build.mjs'));
-  const manifest=JSON.parse(fs.readFileSync(path.join(frontend,'package.json'),'utf8'));
-  fs.writeFileSync(path.join(f.dir,'package.json'),JSON.stringify({name:'install-fixture',version:'1.0.0',scripts:{preinstall:manifest.scripts.preinstall}}));
-  fs.writeFileSync(path.join(f.dir,'package-lock.json'),JSON.stringify({name:'install-fixture',version:'1.0.0',lockfileVersion:3,packages:{'':{name:'install-fixture',version:'1.0.0'}}}));
-  fs.writeFileSync(path.join(bin,'python3'),'#!/bin/sh\nprintf called > "$GATE_LOG"\nexit 17\n',{mode:0o755});
-  const gate=path.join(f.dir,'gate');
-  const result=spawnSync('npm',[command,'--offline','--no-audit','--no-fund'],{cwd:f.dir,encoding:'utf8',env:{...f.env,PATH:bin+path.delimiter+process.env.PATH,GATE_LOG:gate}});
-  assert.equal(result.status,17,result.stdout+result.stderr);
-  assert.equal(fs.readFileSync(gate,'utf8'),'called');
-});
 test('container manifest-only install preserves dependency lifecycle scripts',{skip:process.platform==='win32'},t=>{
   const f=installFixture(t),directory=path.join(f.dir,'container'),dependency=path.join(directory,'dependency');
   fs.mkdirSync(dependency,{recursive:true});
@@ -74,7 +61,7 @@ test('container manifest-only install preserves dependency lifecycle scripts',{s
   assert.equal(result.status,0,result.stdout+result.stderr);
   const manifest=JSON.parse(fs.readFileSync(path.join(frontend,'package.json'),'utf8'));
   fs.writeFileSync(path.join(directory,'package.json'),JSON.stringify({name:'container-fixture',version:'1.0.0',
-    scripts:{preinstall:manifest.scripts.preinstall},allowScripts:{'file:capacity-install-fixture-1.0.0.tgz':true},
+    scripts:{'deps:ci':manifest.scripts['deps:ci']},allowScripts:{'file:capacity-install-fixture-1.0.0.tgz':true},
     dependencies:{'capacity-install-fixture':'file:capacity-install-fixture-1.0.0.tgz'}}));
   result=run('npm',['install','--package-lock-only','--ignore-scripts','--offline','--no-audit','--no-fund']);
   assert.equal(result.status,0,result.stdout+result.stderr);
@@ -85,4 +72,26 @@ test('container manifest-only install preserves dependency lifecycle scripts',{s
   assert.equal(result.status,0,result.stdout+result.stderr);
   assert.ok(fs.existsSync(path.join(directory,'node_modules/capacity-install-fixture/installed')),result.stdout+result.stderr);
   assert.equal(fs.readFileSync(path.join(directory,'node_modules/capacity-install-fixture/installed'),'utf8'),'yes');
+});
+
+for(const command of ['ci','install'])test(`dependency entry deps:${command} rejects before resolution`,t=>{
+  const directory=fs.mkdtempSync(path.join(os.tmpdir(),'dependency-entry-'));
+  t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
+  const packageDir=path.join(directory,'frontend'),helper=path.join(directory,'frontend/scripts/capacity-build.mjs');
+  fs.mkdirSync(packageDir,{recursive:true});fs.mkdirSync(path.dirname(helper),{recursive:true});
+  fs.copyFileSync(path.join(root,'frontend/scripts/capacity-build.mjs'),helper);
+  const manifest=JSON.parse(fs.readFileSync(path.join(root,'frontend','package.json'),'utf8'));
+  const script=`deps:${command}`;
+  fs.writeFileSync(path.join(packageDir,'package.json'),JSON.stringify({...manifest,scripts:{[script]:manifest.scripts[script]}}));
+  fs.copyFileSync(path.join(root,'frontend','package-lock.json'),path.join(packageDir,'package-lock.json'));
+  const npm=process.env.npm_execpath||(process.platform==='win32'
+    ?path.join(path.dirname(process.execPath),'node_modules/npm/bin/npm-cli.js'):'/usr/bin/npm');
+  const result=spawnSync(process.execPath,[npm,'run',script,'--','--offline','--no-audit','--no-fund'],{
+    cwd:packageDir,encoding:'utf8',env:{...process.env,TMPDIR:'',TMP:'',TEMP:'',
+      PANDALABS_TEMP_ROOT:'',PANDALABS_BUILD_TEMP_ROOT:'',npm_config_cache:path.join(directory,'cache')},
+  });
+  const output=(result.stdout||'')+(result.stderr||'');
+  assert.notEqual(result.status,null,output);assert.notEqual(result.status,0,output);
+  assert.match(output,/task temporary variables.*required/);
+  assert.equal(fs.existsSync(path.join(packageDir,'node_modules')),false);
 });
