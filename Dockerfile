@@ -11,7 +11,8 @@ FROM node@sha256:5cbc7caba8c2c0f0bca675d1b61b9f2857e1cf1853c6164ee9dd409501a936e
 WORKDIR /src/panda-auth-admin/frontend
 # lockfile 必选：去掉 `*` 通配后缺失即构建失败，避免装出与提交内容无关的依赖树
 COPY panda-auth-admin/frontend/package.json panda-auth-admin/frontend/package-lock.json ./
-RUN npm ci
+# Host capacity admission precedes Docker; retain dependency lifecycle scripts here.
+RUN npm pkg delete scripts.preinstall && npm ci
 COPY panda-auth-admin/frontend/ .
 RUN ./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build
 
