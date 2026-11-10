@@ -13,6 +13,7 @@ import AdminAuthBoundary from "./AdminAuthBoundary"
 import { NAV } from "@/lib/nav"
 import { useI18n } from "@/lib/i18n"
 import { notify } from "@/lib/notify"
+import { useSession } from "@/lib/auth"
 
 /**
  * 路由(模板 v0.5.0 形态):/login 独立无布局,其余挂在 AppLayout(侧栏+固定顶栏)
@@ -64,12 +65,18 @@ function useCommandActions() {
 export function AppShell() {
   const { t } = useI18n()
   const commandActions = useCommandActions()
+  const { data: session } = useSession()
   const navItems: NavItem[] = NAV.map(({ to, label, icon, ...rest }) => ({ to, label: t(label), icon, ...rest }))
   return (
     <AppLayout
       navItems={navItems}
       navigationLabel={t("导航")}
       title={t("管理后台")}
+      translate={t}
+      accountLinks={{
+        profile: session?.accountEntryUrl ? { href: session.accountEntryUrl, newWindow: true } : null,
+        security: { href: "/account/change-password?returnUrl=/admin" },
+      }}
       brand={
         <img src="/admin/pandaauth-logo-horizontal.png" alt="PandaAuth by PandaLabs" className="h-9 w-auto max-w-full object-contain object-left" />
       }
@@ -80,6 +87,11 @@ export function AppShell() {
 }
 
 /** Protected routes mount inside the shared authentication boundary. */
+
+function LocalizedNotFound() {
+  const { t } = useI18n()
+  return <NotFoundPage embedded translate={t} />
+}
 
 export const router = createBrowserRouter(
   [
@@ -106,9 +118,9 @@ export const router = createBrowserRouter(
         { path: "audit", element: page(<AuditPage />) },
         { path: "403", element: <ForbiddenPage /> },
         { path: "500", element: <ServerErrorPage /> },
+        { path: "*", element: <LocalizedNotFound /> },
       ],
     },
-    { path: "*", element: <NotFoundPage /> },
   ],
   // 路由 basename 跟随 Vite base,但剥掉尾斜杠:vite base 为 /admin/ 而裸路径 /admin 入口
   // (无尾斜杠)在 RR8 下不匹配 basename 会渲染空树——规范化为 /admin 后两种入口都命中。

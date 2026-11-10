@@ -7,6 +7,12 @@ afterEach(() => {
 })
 
 describe("sessionApi", () => {
+  it("never substitutes an internal subject for a missing display name", async () => {
+    const response = (name: string | null, nickname: string | null) => new Response(JSON.stringify({ subject: "internal-subject", name, nickname, email: null, portalHomeUrl: null, roles: [] }), { headers: { "content-type": "application/json" } })
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response(null, null)).mockResolvedValueOnce(response(" Visible ", " ")))
+    expect((await sessionApi.me())?.displayName).toBe("")
+    expect((await sessionApi.me())?.displayName).toBe("Visible")
+  })
   it("treats only an unauthenticated response as an absent session", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.resolve(new Response(null, { status: 401 }))))
     await expect(sessionApi.me()).resolves.toBeNull()

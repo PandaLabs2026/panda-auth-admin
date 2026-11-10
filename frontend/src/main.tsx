@@ -10,6 +10,10 @@ import { i18nConfig } from "@/i18n/config"
 import { I18nProvider } from "@/lib/i18n"
 import ErrorBoundary from "@/components/patterns/ErrorBoundary"
 import { router } from "@/app/router"
+import { appMetadata } from "@/app/metadata"
+import { applyAppTitle } from "@/lib/app-metadata"
+
+applyAppTitle(appMetadata.productName)
 
 const queryClient = new QueryClient({
   defaultOptions: {

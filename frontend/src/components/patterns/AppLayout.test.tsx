@@ -122,7 +122,7 @@ test('内容区默认全宽:无 max-w-* 上限,纵向撑满(flex-1)', async () =
     </QueryClientProvider>,
   );
   await screen.findByText('页面内容');
-  const content = screen.getAllByRole('main').at(-1)!;
+  const content = document.querySelector<HTMLElement>('[data-slot="app-content"]')!;
   expect(content.className).toContain('flex-1');
   expect(content.className).toContain('gap-6');
   // 骨架完整性:内容区横向裁剪,文档永不横向滚动(否则 sticky 顶栏会盖到 fixed 侧栏上)
@@ -149,7 +149,7 @@ test('contentClassName 合并进内容区:应用可整体收窄', async () => {
     </QueryClientProvider>,
   );
   await screen.findByText('页面内容');
-  const content = screen.getAllByRole('main').at(-1)!;
+  const content = document.querySelector<HTMLElement>('[data-slot="app-content"]')!;
   expect(content.className).toContain('max-w-4xl');
   expect(content.className).toContain('mx-auto');
   expect(content.className).toContain('gap-6');
@@ -213,4 +213,51 @@ test('userMenu 插槽渲染应用附加账户项(账户中心),位于退出之�
   const items = screen.getAllByRole('menuitem');
   expect(items[items.length - 1]).toHaveTextContent('退出登录');
   expect(screen.getByRole('link', { name: '账户中心' })).toBeInTheDocument();
+});
+
+ test('optional groups render in first appearance order without duplicating links', () => {
+  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter>
+    <AppLayout navItems={[
+      {to: '/a', label: 'Alpha', group: 'Work'},
+      {to: '/b', label: 'Beta', group: 'Resources'},
+      {to: '/c', label: 'Gamma', group: 'Work'},
+    ]} />
+  </MemoryRouter></QueryClientProvider>);
+  expect(screen.getByText('Work')).toBeInTheDocument();
+  expect(screen.getByText('Resources')).toBeInTheDocument();
+  expect(screen.getAllByRole('link').map(link => link.textContent)).toEqual(['Alpha', 'Gamma', 'Beta']);
+});
+
+
+test('account menu uses the application translator without refetching the session on locale changes', async () => {
+  const me = vi.spyOn(sessionApi, 'me').mockResolvedValue({ displayName: 'Locale User', accountEntryUrl: '/me' });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  const messages: Record<string, string> = { '账号设置': 'Account settings', '退出登录': 'Sign out', '邮箱暂不可用': 'Email unavailable' };
+  const t = (message: string) => messages[message] ?? message;
+  const layout = (translate?: (message: string) => string) => <QueryClientProvider client={client}><MemoryRouter><AppLayout navItems={[]} translate={translate} /></MemoryRouter></QueryClientProvider>;
+  const { rerender } = render(layout(t));
+  await screen.findByText('Locale User');
+  await userEvent.click(screen.getByRole('button', { name: /Locale User/ }));
+  expect(screen.getByRole('menuitem', { name: 'Account settings' })).toBeInTheDocument();
+  expect(screen.getByRole('menuitem', { name: 'Sign out' })).toBeInTheDocument();
+  rerender(layout());
+  expect(screen.getByRole('menuitem', { name: '账号设置' })).toBeInTheDocument();
+  expect(me).toHaveBeenCalledTimes(1);
+});
+
+
+test('the shared shell exposes one main landmark around its outlet', () => {
+  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><AppLayout navItems={[]} /></MemoryRouter></QueryClientProvider>);
+  expect(screen.getAllByRole('main')).toHaveLength(1);
+});
+
+test('explicit authorized account links replace the legacy setting and do not infer global roles', async () => {
+  vi.spyOn(sessionApi, 'me').mockResolvedValue({ displayName: 'Scoped User', roles: ['global-admin'], accountEntryUrl: '/legacy-me' });
+  render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><AppLayout navItems={[]} accountLinks={{ profile: { href: '/me' }, help: { href: '/help' } }} userContext={{ organization: 'Workspace A' }} /></MemoryRouter></QueryClientProvider>);
+  await screen.findByText('Scoped User');
+  expect(screen.getByText(/当前组织.*Workspace A/)).toBeInTheDocument();
+  expect(screen.queryByText('global-admin')).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole('button', { name: /Scoped User/ }));
+  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['个人资料', '帮助与反馈', '退出登录']);
+  expect(screen.queryByRole('menuitem', { name: '账号设置' })).not.toBeInTheDocument();
 });

@@ -18,7 +18,7 @@ import {
   SidebarProvider,
   SidebarTrigger,
 } from '@/components/ui/sidebar';
-import NavUser from './NavUser';
+import NavUser, { type AccountLinks, type UserContext } from './NavUser';
 import { authMode } from '@/lib/auth-mode';
 import CommandPalette from './CommandPalette';
 import { Toaster } from '@/components/ui/sonner';
@@ -43,6 +43,8 @@ export interface NavItem {
   icon?: React.ComponentType<{ className?: string }>;
   /** NavLink 的 end 语义:索引路由用 true。 */
   end?: boolean;
+  /** Optional sidebar section; omitted items retain navigationLabel. */
+  group?: string;
 }
 
 export default function AppLayout({
@@ -55,6 +57,9 @@ export default function AppLayout({
   commandActions,
   userMenu,
   showVersionFooter = false,
+  translate,
+  accountLinks,
+  userContext,
 }: {
   navItems: NavItem[];
   /** 本地化侧栏分组标题；由使用方随语言切换传入。 */
@@ -73,7 +78,14 @@ export default function AppLayout({
   /** 模板版本页脚属 showcase 演示职责,默认不渲染(应用实现不带模板版本号);
       模板自身的 showcase 显式开启。 */
   showVersionFooter?: boolean;
+  /** Reuse the application dictionary for shared shell copy. */
+  translate?: (message: string) => string;
+  /** Explicitly authorized account destinations; omitted keeps the legacy accountEntryUrl. */
+  accountLinks?: AccountLinks;
+  /** Already-authorized display context; never inferred from global role claims. */
+  userContext?: UserContext;
 }) {
+  const t = (message: string) => translate?.(message)?.trim() || message;
   const { data: session } = useSession();
   const logout = useLogout();
   const [commandOpen, setCommandOpen] = useState(false);
@@ -83,6 +95,14 @@ export default function AppLayout({
   const active = navItems.find(({ to, end }) =>
     end ? pathname === to : pathname === to || pathname.startsWith(to + '/'),
   );
+  const groups = new Map<string, NavItem[]>();
+  for (const item of navItems) {
+    const label = item.group ?? navigationLabel;
+    const items = groups.get(label) ?? [];
+    items.push(item);
+    groups.set(label, items);
+  }
+  if (groups.size === 0) groups.set(navigationLabel, []);
   return (
     <SidebarProvider>
       <Sidebar collapsible="icon">
@@ -106,11 +126,11 @@ export default function AppLayout({
           </SidebarMenu>
         </SidebarHeader>
         <SidebarContent>
-          <SidebarGroup>
-            <SidebarGroupLabel>{navigationLabel}</SidebarGroupLabel>
+          {Array.from(groups, ([group, items]) => <SidebarGroup key={group}>
+            <SidebarGroupLabel>{group}</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {navItems.map(({ to, label, icon: Icon, end }) => (
+                {items.map(({ to, label, icon: Icon, end }) => (
                   <SidebarMenuItem key={to}>
                     <NavLink to={to} end={end}>
                       {({ isActive }) => (
@@ -126,20 +146,23 @@ export default function AppLayout({
                 ))}
               </SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>
+          </SidebarGroup>)}
         </SidebarContent>
         <SidebarFooter>
           <NavUser
             avatarUrl={authMode === 'demo' && session ? `${import.meta.env.BASE_URL}demo-avatar.png` : undefined}
-            name={session?.displayName ?? '未登录'}
+            name={session?.displayName ?? t('未登录')}
             email={session?.email}
+            translate={translate}
+            links={accountLinks}
+            context={userContext}
             onLogout={() => logout.mutate()}
           >
             {/* 账号自助外链模式:身份属性(姓名/邮箱/密码/MFA)唯一正本在 IDP,
                 应用只经会话下发的 accountEntryUrl 跳转;改完回应用,会话到下次刷新才更新。 */}
-            {session?.accountEntryUrl && (
+            {!accountLinks && session?.accountEntryUrl && (
               <DropdownMenuItem asChild>
-                <a href={session.accountEntryUrl} target="_blank" rel="noopener noreferrer"><UserRoundCog aria-hidden="true" />账号设置</a>
+                <a href={session.accountEntryUrl} target="_blank" rel="noopener noreferrer"><UserRoundCog aria-hidden="true" />{t('账号设置')}</a>
               </DropdownMenuItem>
             )}
             {userMenu}
@@ -155,9 +178,9 @@ export default function AppLayout({
             {headerActions}
           </div>
         </header>
-        <main className={cn('flex w-full min-w-0 flex-1 flex-col gap-6 overflow-x-clip p-6', contentClassName)}>
+        <div data-slot="app-content" className={cn('flex w-full min-w-0 flex-1 flex-col gap-6 overflow-x-clip p-6', contentClassName)}>
           <Outlet />
-        </main>
+        </div>
         {showVersionFooter && (
           <footer className="border-t px-4 py-2 text-[11px] text-muted-foreground">
             模板版本 {__APP_VERSION__}

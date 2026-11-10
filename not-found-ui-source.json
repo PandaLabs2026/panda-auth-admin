@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "repository": "PandaLabs2026/panda-webapp-template",
+  "consumer": "panda-auth-admin",
+  "version": "v0.6.22",
+  "commit": "813e5dd3beee476a29faf1d98f5ed2136fd31a6f",
+  "files": {
+    "frontend/src/pages/NotFoundPage.tsx": "8ead0fa78385bd52b75a290b0591c8e95715d60148258978fcb9cff3addebb30",
+    "frontend/src/pages/NotFoundPage.test.tsx": "79c0eab8c23820ab4acfe03fd11d1ec34fba8a99a1ea077b0974fce3be36d65b",
+    "frontend/src/components/ui/empty.tsx": "54f529ccf72c18c4b5abd5586a7cf1f2a4c8d207aac366029d66ed095cb2965d",
+    "frontend/src/components/ui/button.tsx": "08e5f87833c5db8436e89337ebde0f776bcdbf649d3de69fb89be6441ca2e366"
+  }
+}

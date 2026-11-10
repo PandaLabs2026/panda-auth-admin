@@ -2,22 +2,28 @@ import { useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyTitle } from '@/components/ui/empty';
 
-/** 404:catch-all 路由,复用官方 empty 组件;从登录守卫前拦截,无布局依赖。 */
-export default function NotFoundPage() {
+/** Shared 404 presentation; the host owns authentication and layout placement. */
+export default function NotFoundPage({ embedded = false, translate }: {
+  /** Use inside the host main landmark without adding another main. */
+  embedded?: boolean;
+  translate?: (message: string) => string;
+} = {}) {
   const navigate = useNavigate();
+  const t = (message: string) => translate?.(message)?.trim() || message;
+  const Container = embedded ? 'div' : 'main';
   return (
-    <div className="flex min-h-svh items-center justify-center p-4">
+    <Container className={embedded ? "flex flex-1 items-center justify-center" : "flex min-h-svh items-center justify-center p-4"}>
       <Empty className="rounded-lg border border-dashed">
         <EmptyHeader>
-          <EmptyTitle>页面不存在</EmptyTitle>
-          <EmptyDescription>地址可能已变更或从未存在。</EmptyDescription>
+          <EmptyTitle><h1>{t('页面不存在')}</h1></EmptyTitle>
+          <EmptyDescription>{t('地址可能已变更或从未存在。')}</EmptyDescription>
         </EmptyHeader>
         <EmptyContent>
           <Button variant="outline" onClick={() => navigate('/')}>
-            回到首页
+            {t('回到首页')}
           </Button>
         </EmptyContent>
       </Empty>
-    </div>
+    </Container>
   );
 }
