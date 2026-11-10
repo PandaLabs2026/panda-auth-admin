@@ -46,7 +46,7 @@ describe("AppShell wiring", () => {
     expect(await screen.findByText("管理员甲")).toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: /管理员甲/ }))
     expect(await screen.findByRole("menu")).toBeInTheDocument()
-    expect(screen.getByText("账号设置")).toHaveAttribute("href", "/me")
+    expect(screen.getByRole("menuitem", { name: "个人资料" })).toHaveAttribute("href", "/me")
     // 顶栏常驻件:返回门户 + 修改密码(IDP 页,整页跳转)。
     expect(screen.getByText("返回熊猫门户")).toBeInTheDocument()
     expect(screen.getByText("修改密码")).toHaveAttribute("href", "/account/change-password?returnUrl=/admin")
@@ -70,5 +70,8 @@ describe("AppShell wiring", () => {
     expect(screen.getByRole("button", { name: "Switch language" })).toBeInTheDocument()
     expect(screen.getByText("Navigation")).toBeInTheDocument()
     expect(screen.queryByText("导航")).not.toBeInTheDocument()
+    await user.click(await screen.findByRole("button", { name: /甲/ }))
+    expect(screen.getByRole("menuitem", { name: "Profile" })).toHaveAttribute("href", "/me")
+    expect(screen.getByRole("menuitem", { name: "Sign out" })).toBeInTheDocument()
   })
 })

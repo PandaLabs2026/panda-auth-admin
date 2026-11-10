@@ -9,6 +9,7 @@ public class AdminAuthPageTests
         Assert.DoesNotContain("<script>", html);
         Assert.Contains("&lt;script&gt;", html);
         Assert.Contains("name=\"viewport\"", html);
+        Assert.Contains("<title>PandaAuth 管理后台 | Panda Labs</title>", html);
         Assert.Contains("PandaAuth by PandaLabs", html);
         Assert.Contains("href=\"/admin/login\"", html);
         Assert.Contains(":focus-visible", html);

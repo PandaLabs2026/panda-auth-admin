@@ -313,5 +313,13 @@
   "进行中的管理操作": "an administrative operation in progress",
   "结果待核实的管理操作": "an administrative operation with an uncertain outcome",
   "查看日志详情 {id}": "View log details {id}",
-  "日志详情": "Log details"
+  "日志详情": "Log details",
+  "个人资料": "Profile",
+  "账号与安全": "Account and security",
+  "邮箱暂不可用": "Email unavailable",
+  "未登录": "Not signed in",
+  "账号设置": "Account settings",
+  "页面不存在": "Page not found",
+  "地址可能已变更或从未存在。": "The address may have changed or never existed.",
+  "回到首页": "Back to home"
 }

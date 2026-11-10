@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "repository": "PandaLabs2026/panda-webapp-template",
+  "consumer": "panda-auth-admin",
+  "version": "v0.6.22",
+  "commit": "813e5dd3beee476a29faf1d98f5ed2136fd31a6f",
+  "files": {
+    "frontend/src/lib/app-metadata.ts": "8e8b3d4bd0d1ae56ad40eec92c7f93b50a0c70f8951800209df7b0b98b5a4b86",
+    "frontend/src/lib/app-metadata.test.ts": "3c98490e6632a2e27220253519fbe71968d40cc3fad81c3942f79b54ced8fd86"
+  }
+}

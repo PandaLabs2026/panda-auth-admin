@@ -42,7 +42,7 @@ type BffSession = {
 /** BFF 会话 → 模板组件层会话的映射（displayName 昵称优先对齐旧版概览行为；null 归一 undefined）。 */
 function toSession(raw: BffSession): Session {
   return {
-    displayName: raw.nickname ?? raw.name ?? raw.subject,
+    displayName: raw.nickname?.trim() || raw.name?.trim() || "",
     email: raw.email ?? undefined,
     roles: raw.roles,
     accountEntryUrl: "/me",

@@ -4,6 +4,8 @@ import { execSync } from "node:child_process"
 import { defineConfig } from "vitest/config"
 import react from "@vitejs/plugin-react"
 import tailwindcss from "@tailwindcss/vite"
+import { appMetadata } from "./src/app/metadata.ts"
+import { formatAppTitle } from "./src/lib/app-metadata.ts"
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 
@@ -18,7 +20,14 @@ const appVersion = (() => {
 export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify(appVersion) },
   base: "/admin/",
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), {
+    name: 'pandalabs-app-title',
+    transformIndexHtml: {
+      order: 'pre',
+      handler: html => html.replace('__PANDALABS_APP_TITLE__', () => formatAppTitle(appMetadata.productName)
+        .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')),
+    },
+  }],
   resolve: {
     alias: { "@": path.resolve(dirname, "./src") },
   },
