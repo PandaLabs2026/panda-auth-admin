@@ -6,8 +6,9 @@ import {fileURLToPath} from 'node:url';
 const frontend=fileURLToPath(new URL('../',import.meta.url));
 const root=path.dirname(frontend);
 const meta=process.platform==='win32'?'D:\\dev\\pandalabs\\meta':path.join(os.homedir(),'dev/pandalabs/meta');
+// Native TypeScript/Vite writes only host paths. Container storage is admitted by the image entry.
 const result=spawnSync(process.platform==='win32'?'python':'python3',[
-  '-I','-B',path.join(meta,'scripts/capacity_preflight.py'),'--default','--docker',
+  '-I','-B',path.join(meta,'scripts/capacity_preflight.py'),'--default',
   '--path',root,'--path',path.join(root,'src/PandaAuth.Admin/wwwroot/admin'),'--path',path.join(frontend,'node_modules/.vite'),
 ],{cwd:frontend,stdio:'inherit'});
 if(result.error)console.error(result.error.message);

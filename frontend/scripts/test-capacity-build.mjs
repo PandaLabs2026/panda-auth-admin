@@ -28,10 +28,21 @@ test('capacity rejection blocks TypeScript and Vite',{skip:process.platform==='w
   assert.notEqual(result.status,0,result.stdout+result.stderr);
   assert.equal(fs.existsSync(f.built),false);
   const args=fs.readFileSync(f.gate,'utf8');
-  assert.match(args,/--default\n--docker\n/);
+  assert.match(args,/--default\n/);
+  assert.doesNotMatch(args,/--docker|--outer-capacity-admitted/);
   assert.ok(args.includes(f.dir+'\n'));
   assert.ok(args.includes(path.join(f.dir,'src/PandaAuth.Admin/wwwroot/admin')+'\n'));
   assert.ok(args.includes(path.join(f.fe,'node_modules/.vite')+'\n'));
+});
+
+test('native frontend admission needs no Docker but still gates the build',{skip:process.platform==='win32'?'POSIX executable fixture':false},t=>{
+  const f=fixture(t);
+  const interpreter=path.join(f.dir,'bin/python3');
+  fs.writeFileSync(interpreter,'#!/bin/sh\nprintf "%s\\n" "$@" > "$GATE_LOG"\nfor argument in "$@"; do [ "$argument" != "--docker" ] || exit 23; done\nexit 0\n',{mode:0o755});
+  const result=build(f);
+  assert.equal(result.status,0,result.stdout+result.stderr);
+  assert.equal(fs.readFileSync(f.built,'utf8'),'tsc\n--noEmit\nvite\nbuild\n');
+  assert.match(fs.readFileSync(f.gate,'utf8'),/--default\n/);
 });
 
 test('admitted host build retains TypeScript then Vite',{skip:process.platform==='win32'?'POSIX executable fixture':false},t=>{
