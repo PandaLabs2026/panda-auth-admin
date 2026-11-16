@@ -5,7 +5,7 @@ namespace PandaAuth.Admin;
 
 /// <summary>校验 PandaAuth Admin 当前请求主机与会话中的租户声明是否一致。</summary>
 /// <remarks>
-/// 规范租户主机是 t####-auth.sNNN.pandalabs.cn；旧的 t####.auth.pandalabs.cn 已退役。
+/// 规范租户主机是 t####-auth.sNNN.pandacloud.cc；旧的 t####.auth.pandalabs.cn 已退役。
 /// 平台/遗留主机（如 fleet 的 auth.appliket.com、localhost）没有租户语义，直接放行；
 /// 只有能被共享解析器识别为规范租户主机时才要求 claims 与主机一致。
 /// 总开关 Auth:TenantRouting:Enabled 默认 false，与服务端保持同一发布节奏。
