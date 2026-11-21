@@ -18,10 +18,13 @@ namespace PandaAuth.Admin.Tests;
 public sealed class SessionStatusValidationTests
 {
     [Theory]
-    [InlineData(HttpStatusCode.OK, HttpStatusCode.OK)]
-    [InlineData(HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized)]
-    [InlineData(HttpStatusCode.ServiceUnavailable, HttpStatusCode.ServiceUnavailable)]
-    public async Task SessionStatus_ValidatesIssuedTokensBeforeReportingAuthenticated(HttpStatusCode upstream, HttpStatusCode expected)
+    [InlineData(HttpStatusCode.OK, HttpStatusCode.OK, null, null)]
+    [InlineData(HttpStatusCode.OK, HttpStatusCode.OK, "  ", null)]
+    [InlineData(HttpStatusCode.OK, HttpStatusCode.OK, "https://app.example.invalid/", "https://app.example.invalid/")]
+    [InlineData(HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized, null, null)]
+    [InlineData(HttpStatusCode.ServiceUnavailable, HttpStatusCode.ServiceUnavailable, null, null)]
+    public async Task SessionStatus_ValidatesIssuedTokensBeforeReportingAuthenticated(
+        HttpStatusCode upstream, HttpStatusCode expected, string? appHomeUrl, string? expectedHomeUrl)
     {
         var calls = 0;
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -30,6 +33,9 @@ public sealed class SessionStatusValidationTests
             builder.UseSetting("Auth:ClientSecret", "fixture-secret");
             builder.UseSetting("Auth:Issuer", "https://idp.example.invalid/");
             builder.UseSetting("Auth:IdpInternalBaseAddress", "https://idp.example.invalid/");
+            builder.UseSetting("Auth:PortalHomeUrl", "https://legacy.example.invalid/");
+            if (appHomeUrl is not null)
+                builder.UseSetting("Auth:AppHomeUrl", appHomeUrl);
             builder.ConfigureServices(services =>
             {
                 services.RemoveAll<IAdminSessionState>();
@@ -63,6 +69,7 @@ public sealed class SessionStatusValidationTests
         {
             var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
             Assert.Equal("fixture-user", payload.GetProperty("subject").GetString());
+            Assert.Equal(expectedHomeUrl, payload.GetProperty("portalHomeUrl").GetString());
             Assert.Contains(payload.GetProperty("roles").EnumerateArray(), role => role.GetString() == "admin");
         }
         if (upstream == HttpStatusCode.Unauthorized)
