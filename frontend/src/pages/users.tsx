@@ -48,13 +48,13 @@ const ADMIN_ROLE = "admin"
 type CreateDraft = {
   userName: string
   email: string
-  nickname: string
+  displayName: string
   region: string
   password: string
   grantAdminRole: boolean
 }
 
-const EMPTY_CREATE: CreateDraft = { userName: "", email: "", nickname: "", region: "", password: "", grantAdminRole: false }
+const EMPTY_CREATE: CreateDraft = { userName: "", email: "", displayName: "", region: "", password: "", grantAdminRole: false }
 const EMPTY_CLAIM: ClaimRequest = { claimType: "panda:", claimValue: "", scope: "api" }
 
 /** 详情是否处于需要解锁的状态（存在未过期的 LockoutEnd，或失败计数未清）。 */
@@ -111,7 +111,7 @@ export default function UsersPage() {
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<CreateDraft>(EMPTY_CREATE)
   const [editingProfile, setEditingProfile] = useState(false)
-  const [profileDraft, setProfileDraft] = useState({ email: "", nickname: "", region: "" })
+  const [profileDraft, setProfileDraft] = useState({ email: "", displayName: "", region: "" })
   const [claimState, setClaimState] = useState({ ownerId: detailUserId, draft: EMPTY_CLAIM })
   const claimDraft = claimState.ownerId === detailUserId ? claimState.draft : EMPTY_CLAIM
   const setClaimDraft = useCallback((draft: ClaimRequest) => setClaimState({ ownerId: detailUserId, draft }), [detailUserId])
@@ -189,9 +189,9 @@ export default function UsersPage() {
     if (!detailQuery.data) return
     setEditingProfile(false)
     const user = detailQuery.data.user
-    const savedProfile = consumeDraft<{ userId: string; draft: { email: string; nickname: string; region: string } }>("users.profile")
+    const savedProfile = consumeDraft<{ userId: string; draft: { email: string; displayName?: string; nickname?: string; region: string } }>("users.profile")
     if (savedProfile && savedProfile.userId === user.id) {
-      setProfileDraft(savedProfile.draft)
+      setProfileDraft({ ...savedProfile.draft, displayName: savedProfile.draft.displayName ?? savedProfile.draft.nickname ?? "" })
       setEditingProfile(true)
     }
   }, [detailQuery.data])
@@ -272,7 +272,7 @@ export default function UsersPage() {
       const response = await apiSend<CreateUserResponse>("POST", "/admin/api/users", {
         userName: draft.userName.trim(),
         email: draft.email.trim() || null,
-        nickname: draft.nickname.trim() || null,
+        displayName: draft.displayName.trim() || null,
         region: draft.region.trim() || null,
         password: draft.password || null,
         grantAdminRole: draft.grantAdminRole,
@@ -300,7 +300,7 @@ export default function UsersPage() {
     try {
       await apiSend<UserDetail>("PUT", `/admin/api/users/${detail.id}/profile`, {
         email: profileDraft.email.trim() || null,
-        nickname: profileDraft.nickname.trim() || null,
+        displayName: profileDraft.displayName.trim() || null,
         region: profileDraft.region.trim() || null,
       })
       clearDraft("users.profile")
@@ -420,7 +420,7 @@ export default function UsersPage() {
   }
 
   function openProfileEditor(user: UserDetail) {
-    setProfileDraft({ email: user.email ?? "", nickname: user.nickname ?? "", region: user.region ?? "" })
+    setProfileDraft({ email: user.email ?? "", displayName: user.displayName === undefined ? user.nickname ?? "" : user.displayName ?? "", region: user.region ?? "" })
     setEditingProfile(true)
   }
 
@@ -480,11 +480,11 @@ export default function UsersPage() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="create-nickname">{t("昵称")}</Label>
+              <Label htmlFor="create-displayName">{t("显示名")}</Label>
               <Input
-                id="create-nickname"
-                value={draft.nickname}
-                onChange={(event) => setDraft({ ...draft, nickname: event.target.value })}
+                id="create-displayName"
+                value={draft.displayName}
+                onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
               />
             </div>
             <div className="grid gap-1.5">
@@ -564,7 +564,7 @@ export default function UsersPage() {
                     onClick={() => updateParams({ user: user.id })}
                   >
                     {user.userName}
-                    {user.nickname ? <span className="ml-2 text-xs text-muted-foreground">{user.nickname}</span> : null}
+                    <span className="ml-2 text-xs text-muted-foreground">{(user.displayName === undefined ? user.nickname : user.displayName) || t("未设置名称")}</span>
                   </TableCell>
                   <TableCell className="px-4 py-3 text-muted-foreground">{user.email ?? "—"}</TableCell>
                   <TableCell className="px-4 py-3">
@@ -872,11 +872,11 @@ export default function UsersPage() {
               />
             </div>
             <div className="grid gap-1.5">
-              <Label htmlFor="profile-nickname">{t("昵称")}</Label>
+              <Label htmlFor="profile-displayName">{t("显示名")}</Label>
               <Input
-                id="profile-nickname"
-                value={profileDraft.nickname}
-                onChange={(event) => setProfileDraft({ ...profileDraft, nickname: event.target.value })}
+                id="profile-displayName"
+                value={profileDraft.displayName}
+                onChange={(event) => setProfileDraft({ ...profileDraft, displayName: event.target.value })}
               />
             </div>
             <div className="grid gap-1.5">

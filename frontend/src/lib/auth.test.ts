@@ -7,6 +7,16 @@ afterEach(() => {
 })
 
 describe("sessionApi", () => {
+  it.each([["Administrator", "Administrator"], [null, ""]])(
+    "uses a canonical name even when the legacy session has a nickname (%s)", async (displayName, expected) => {
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+        subject: "user", name: "user@example.test", nickname: "PandaAdmin", displayName,
+        email: "user@example.test", portalHomeUrl: null, roles: [],
+      })))
+      expect((await sessionApi.me())?.displayName).toBe(expected)
+    },
+  )
+
   it("never substitutes an internal subject for a missing display name", async () => {
     const response = (name: string | null, nickname: string | null) => new Response(JSON.stringify({ subject: "internal-subject", name, nickname, email: null, portalHomeUrl: null, roles: [] }), { headers: { "content-type": "application/json" } })
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(response(null, null)).mockResolvedValueOnce(response(" Visible ", " ")))

@@ -34,15 +34,18 @@ type BffSession = {
   subject: string
   name: string | null
   email: string | null
+  displayName?: string | null
   nickname: string | null
   roles: string[]
   portalHomeUrl: string | null
 }
 
-/** BFF 会话 → 模板组件层会话的映射（displayName 昵称优先对齐旧版概览行为；null 归一 undefined）。 */
+/** 仅在旧 BFF 缺少 displayName 属性时使用旧声明。 */
 function toSession(raw: BffSession): Session {
   return {
-    displayName: raw.nickname?.trim() || raw.name?.trim() || "",
+    displayName: raw.displayName === undefined
+      ? raw.nickname?.trim() || raw.name?.trim() || ""
+      : raw.displayName?.trim() || "",
     email: raw.email ?? undefined,
     roles: raw.roles,
     accountEntryUrl: "/me",
@@ -81,7 +84,8 @@ export const sessionApi = {
         if (typeof value.subject !== "string" || !value.subject.trim() ||
             !Array.isArray(value.roles) || !value.roles.every(role => typeof role === "string") ||
             ["name", "email", "nickname", "portalHomeUrl"].some(key =>
-              value[key] !== null && typeof value[key] !== "string"))
+              value[key] !== null && typeof value[key] !== "string") ||
+            (value.displayName !== undefined && value.displayName !== null && typeof value.displayName !== "string"))
           throw new Error("会话服务返回了无效响应。")
         return toSession(value as BffSession)
       },

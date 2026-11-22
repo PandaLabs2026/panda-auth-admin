@@ -254,6 +254,7 @@ export type UserSummary = {
   id: string
   userName: string
   email: string | null
+  displayName?: string | null
   nickname: string | null
   status: number
   createdAt: string
@@ -308,7 +309,7 @@ export type ClientOptions = { permissionGroups: { group: string; options: string
 export type CreateUserRequest = {
   userName: string
   email?: string | null
-  nickname?: string | null
+  displayName?: string | null
   region?: string | null
   password?: string | null
   grantAdminRole: boolean
@@ -320,7 +321,7 @@ export type CreateUserResponse = { id: string; userName: string; email: string |
 export type UserRolesRequest = { roles: string[] }
 
 /** 资料编辑 PUT 全量语义：每个字段携带最终值，null 即清空。 */
-export type UserProfileRequest = { email?: string | null; nickname?: string | null; region?: string | null }
+export type UserProfileRequest = { email?: string | null; displayName?: string | null; region?: string | null }
 
 export type DeactivateRequest = { confirmUserName: string }
 
