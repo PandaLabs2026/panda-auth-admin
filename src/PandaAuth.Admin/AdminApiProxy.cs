@@ -180,6 +180,9 @@ public sealed class AdminApiProxy(
             request.Headers.TryAddWithoutValidation("X-Panda-Mfa-Grant", grantHeader);
         }
 
+        if (method == HttpMethod.Patch && context.Request.Headers.TryGetValue("If-Match", out var ifMatch))
+            request.Headers.TryAddWithoutValidation("If-Match", ifMatch.ToArray());
+
         if (jsonBody is not null)
         {
             request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
@@ -339,7 +342,7 @@ public sealed class AdminApiProxy(
         // 操作授权门禁（AUTH-DELIVERY-002）：403 且响应体带 mfaGrantRequired 真标记——
         // 与 amr step-up 的 mfaRequired 不同标记，前端弹页内 TOTP(+密码)授权对话框而非整页跳转。
         var grantRequired = response.StatusCode == HttpStatusCode.Forbidden && IsGrantGate(body);
-        return new UpstreamResult((int)response.StatusCode, contentType, body, mfaRequired, grantRequired);
+        return new UpstreamResult((int)response.StatusCode, contentType, body, mfaRequired, grantRequired, response.Headers.ETag?.ToString());
     }
 
     /// <summary>上游 403 是否命中操作授权门禁：响应体带布尔真 mfaGrantRequired（只认真标记）。</summary>
@@ -399,7 +402,7 @@ public sealed class AdminApiProxy(
 
     /// <summary>上游透传结果：除可选的 MFA/授权标记响应头外不改动任何内容（Results.Content 不支持自定义头）。</summary>
     private sealed class UpstreamResult(
-        int statusCode, string contentType, string body, bool mfaRequired, bool grantRequired) : IResult, IStatusCodeHttpResult
+        int statusCode, string contentType, string body, bool mfaRequired, bool grantRequired, string? etag) : IResult, IStatusCodeHttpResult
     {
         public int? StatusCode => statusCode;
         public string Body { get; } = body;
@@ -408,6 +411,11 @@ public sealed class AdminApiProxy(
         {
             httpContext.Response.StatusCode = statusCode;
             httpContext.Response.ContentType = contentType;
+            if (etag is not null)
+            {
+                httpContext.Response.Headers.ETag = etag;
+                httpContext.Response.Headers.CacheControl = "no-store";
+            }
             if (mfaRequired)
             {
                 httpContext.Response.Headers["X-Panda-Mfa-Required"] = "true";

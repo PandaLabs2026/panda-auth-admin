@@ -26,6 +26,8 @@ import {
   REGISTER_CHANNEL,
   USER_STATUS,
   apiGet,
+  apiGetVersioned,
+  ApiError,
   apiSend,
   type AdminUserSession,
   type CreateUserResponse,
@@ -34,6 +36,7 @@ import {
   type UserClaim,
   type UserDetail,
   type UserSummary,
+  type UserProfileRequest,
 } from "@/lib/api"
 import { useSession } from "@/lib/auth"
 import { clearDraft, consumeDraft, saveDraft, saveDraftWithoutPassword, withoutPassword } from "@/lib/drafts"
@@ -49,12 +52,18 @@ type CreateDraft = {
   userName: string
   email: string
   displayName: string
-  region: string
   password: string
   grantAdminRole: boolean
 }
 
-const EMPTY_CREATE: CreateDraft = { userName: "", email: "", displayName: "", region: "", password: "", grantAdminRole: false }
+type ProfileFields = { email: string; displayName: string }
+type ProfileBase = ProfileFields & { etag: string | null }
+
+function profileFields(user: UserDetail): ProfileFields {
+  return { email: user.email ?? "", displayName: user.displayName === undefined ? user.nickname ?? "" : user.displayName ?? "" }
+}
+
+const EMPTY_CREATE: CreateDraft = { userName: "", email: "", displayName: "", password: "", grantAdminRole: false }
 const EMPTY_CLAIM: ClaimRequest = { claimType: "panda:", claimValue: "", scope: "api" }
 
 /** 详情是否处于需要解锁的状态（存在未过期的 LockoutEnd，或失败计数未清）。 */
@@ -111,7 +120,9 @@ export default function UsersPage() {
   const [creating, setCreating] = useState(false)
   const [draft, setDraft] = useState<CreateDraft>(EMPTY_CREATE)
   const [editingProfile, setEditingProfile] = useState(false)
-  const [profileDraft, setProfileDraft] = useState({ email: "", displayName: "", region: "" })
+  const [profileDraft, setProfileDraft] = useState<ProfileFields>({ email: "", displayName: "" })
+  const [profileBase, setProfileBase] = useState<ProfileBase | null>(null)
+  const profileOwner = useRef<string | null>(null)
   const [claimState, setClaimState] = useState({ ownerId: detailUserId, draft: EMPTY_CLAIM })
   const claimDraft = claimState.ownerId === detailUserId ? claimState.draft : EMPTY_CLAIM
   const setClaimDraft = useCallback((draft: ClaimRequest) => setClaimState({ ownerId: detailUserId, draft }), [detailUserId])
@@ -159,11 +170,11 @@ export default function UsersPage() {
   const detailQuery = useQuery({
     queryKey: ["users-detail", detailUserId],
     queryFn: async () => {
-      const [user, userClaims] = await Promise.all([
-        apiGet<UserDetail>(`/admin/api/users/${detailUserId}`),
+      const [versioned, userClaims] = await Promise.all([
+        apiGetVersioned<UserDetail>(`/admin/api/users/${detailUserId}`),
         apiGet<UserClaim[]>(`/admin/api/users/${detailUserId}/claims`),
       ])
-      return { user, claims: userClaims }
+      return { user: versioned.data, etag: versioned.etag, claims: userClaims }
     },
     enabled: detailUserId !== null,
     retry: false,
@@ -186,15 +197,21 @@ export default function UsersPage() {
   // 详情落地(含变更后失效重取)时的伴随动作:MFA step-up 草稿恢复(#26,带 userId
   // 匹配,consume 即弃)——草稿只在详情数据首次/更新落地时消费一次。
   useEffect(() => {
-    if (!detailQuery.data) return
+    if (!detailUserId) {
+      profileOwner.current = null
+      setEditingProfile(false)
+      return
+    }
+    if (detailQuery.data?.user.id !== detailUserId || profileOwner.current === detailUserId) return
+    profileOwner.current = detailUserId
     setEditingProfile(false)
-    const user = detailQuery.data.user
-    const savedProfile = consumeDraft<{ userId: string; draft: { email: string; displayName?: string; nickname?: string; region: string } }>("users.profile")
-    if (savedProfile && savedProfile.userId === user.id) {
-      setProfileDraft({ ...savedProfile.draft, displayName: savedProfile.draft.displayName ?? savedProfile.draft.nickname ?? "" })
+    const saved = consumeDraft<{ userId: string; draft: ProfileFields; base?: ProfileBase }>("users.profile")
+    if (saved?.userId === detailUserId && saved.base) {
+      setProfileBase(saved.base)
+      setProfileDraft(saved.draft)
       setEditingProfile(true)
     }
-  }, [detailQuery.data])
+  }, [detailQuery.data, detailUserId])
 
   /** 变更后失效读侧:列表前缀失效(全页重取),详情与会话按键失效(打开时)。 */
   const refreshAfterMutation = useCallback(
@@ -273,7 +290,6 @@ export default function UsersPage() {
         userName: draft.userName.trim(),
         email: draft.email.trim() || null,
         displayName: draft.displayName.trim() || null,
-        region: draft.region.trim() || null,
         password: draft.password || null,
         grantAdminRole: draft.grantAdminRole,
       })
@@ -294,20 +310,40 @@ export default function UsersPage() {
   }
 
   async function submitProfile() {
-    if (!detail) return
-    setBusy(true)
-    saveDraft("users.profile", { userId: detail.id, draft: profileDraft })
-    try {
-      await apiSend<UserDetail>("PUT", `/admin/api/users/${detail.id}/profile`, {
-        email: profileDraft.email.trim() || null,
-        displayName: profileDraft.displayName.trim() || null,
-        region: profileDraft.region.trim() || null,
-      })
+    if (!detail || !profileBase?.etag) return
+    const userId = detail.id
+    const patch: UserProfileRequest = {}
+    if (profileDraft.email.trim() !== profileBase.email.trim()) patch.email = profileDraft.email.trim() || null
+    if (profileDraft.displayName.trim() !== profileBase.displayName.trim()) patch.displayName = profileDraft.displayName.trim() || null
+    if (Object.keys(patch).length === 0) {
       clearDraft("users.profile")
       setEditingProfile(false)
-      await refreshAfterMutation(detail.id)
+      return
+    }
+
+    setBusy(true)
+    saveDraft("users.profile", { userId, draft: profileDraft, base: profileBase })
+    try {
+      await apiSend<UserDetail>("PATCH", `/admin/api/users/${userId}/profile`, patch, profileBase.etag)
+      clearDraft("users.profile")
+      setEditingProfile(false)
+      await refreshAfterMutation(userId)
       notify.success(t("资料已保存"))
     } catch (cause) {
+      if (cause instanceof ApiError && cause.status === 412) {
+        const refreshed = await detailQuery.refetch()
+        if (!refreshed.isError && refreshed.data?.user.id === userId && profileOwner.current === userId) {
+          const latest = profileFields(refreshed.data.user)
+          const base = { ...latest, etag: refreshed.data.etag }
+          const pending = {
+            email: patch.email === undefined ? latest.email : patch.email ?? "",
+            displayName: patch.displayName === undefined ? latest.displayName : patch.displayName ?? "",
+          }
+          setProfileBase(base)
+          setProfileDraft(pending)
+          saveDraft("users.profile", { userId, draft: pending, base })
+        }
+      }
       notify.failure(toUserMessage(cause))
     } finally {
       setBusy(false)
@@ -420,7 +456,9 @@ export default function UsersPage() {
   }
 
   function openProfileEditor(user: UserDetail) {
-    setProfileDraft({ email: user.email ?? "", displayName: user.displayName === undefined ? user.nickname ?? "" : user.displayName ?? "", region: user.region ?? "" })
+    const fields = profileFields(user)
+    setProfileDraft(fields)
+    setProfileBase({ ...fields, etag: detailQuery.data?.etag ?? null })
     setEditingProfile(true)
   }
 
@@ -485,15 +523,6 @@ export default function UsersPage() {
                 id="create-displayName"
                 value={draft.displayName}
                 onChange={(event) => setDraft({ ...draft, displayName: event.target.value })}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="create-region">{t("区域")}</Label>
-              <Input
-                id="create-region"
-                value={draft.region}
-                onChange={(event) => setDraft({ ...draft, region: event.target.value })}
-                placeholder={t("如 cn-sh（可留空）")}
               />
             </div>
             <div className="grid gap-1.5">
@@ -879,16 +908,8 @@ export default function UsersPage() {
                 onChange={(event) => setProfileDraft({ ...profileDraft, displayName: event.target.value })}
               />
             </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="profile-region">{t("区域")}</Label>
-              <Input
-                id="profile-region"
-                value={profileDraft.region}
-                onChange={(event) => setProfileDraft({ ...profileDraft, region: event.target.value })}
-              />
-            </div>
             <div className="flex gap-2 self-end">
-              <Button disabled={busy} onClick={() => void submitProfile()}>
+              <Button disabled={busy || !profileBase?.etag} onClick={() => void submitProfile()}>
                 {t("保存")}
               </Button>
               <Button variant="outline" disabled={busy} onClick={() => setEditingProfile(false)}>

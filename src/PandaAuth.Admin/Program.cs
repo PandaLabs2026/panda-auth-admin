@@ -744,8 +744,8 @@ app.MapPost("/admin/api/users/{id}/revoke-tokens", (string id, HttpContext ctx, 
 app.MapGet("/admin/api/users/{id}/sessions", (string id, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.UserSessions(NormalizeRouteValue(id)), HttpMethod.Get));
 
-app.MapPut("/admin/api/users/{id}/profile", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(NormalizeRouteValue(id)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
+app.MapPatch("/admin/api/users/{id}/profile", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(NormalizeRouteValue(id)), HttpMethod.Patch, await ReadJsonBodyAsync(ctx))));
 
 app.MapPost("/admin/api/users/{id}/reset-2fa", (string id, HttpContext ctx, AdminApiProxy proxy) =>
     WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserResetTwoFactor(NormalizeRouteValue(id)), HttpMethod.Post)));

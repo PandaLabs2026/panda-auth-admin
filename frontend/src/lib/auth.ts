@@ -44,7 +44,9 @@ type BffSession = {
 function toSession(raw: BffSession): Session {
   return {
     displayName: raw.displayName === undefined
-      ? raw.nickname?.trim() || raw.name?.trim() || ""
+      ? [raw.nickname, raw.name].map(value => value?.trim()).find(value => value
+            && value !== raw.subject && value.toLowerCase() !== raw.email?.trim().toLowerCase()
+            && !/^[^\s@]+@[^\s@]+$/.test(value)) ?? ""
       : raw.displayName?.trim() || "",
     email: raw.email ?? undefined,
     roles: raw.roles,
