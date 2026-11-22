@@ -32,19 +32,38 @@ public sealed class AdminApiProxy(
     ILogger<AdminApiProxy> logger)
 {
     /// <summary>Validate the underlying IDP credentials before exposing a local session profile.</summary>
-    public async Task<IResult?> ValidateSessionAsync(CancellationToken cancellationToken = default)
+    internal async Task<(IResult? Failure, JsonElement DisplayName)> ValidateSessionAsync(
+        string subject, CancellationToken cancellationToken)
     {
         var result = await ForwardAsync(PandaAuthEndpoints.Userinfo, HttpMethod.Get, cancellationToken: cancellationToken);
-        if (result is IStatusCodeHttpResult { StatusCode: StatusCodes.Status200OK }) return null;
+        if (result is UpstreamResult { StatusCode: StatusCodes.Status200OK } userinfo)
+        {
+            try
+            {
+                using var document = JsonDocument.Parse(userinfo.Body);
+                var fields = document.RootElement.EnumerateObject().ToArray();
+                var names = fields.Where(field => field.NameEquals(PandaAuthClaims.DisplayName)).ToArray();
+                if (names.Length == 0) return (null, default); // Server version before display_name.
+                var subjects = fields.Where(field => field.NameEquals("sub")).ToArray();
+                if (subjects.Length == 1 && subjects[0].Value.ValueKind == JsonValueKind.String &&
+                    string.Equals(subjects[0].Value.GetString(), subject, StringComparison.Ordinal) &&
+                    names.Length == 1 && names[0].Value.ValueKind is JsonValueKind.String or JsonValueKind.Null)
+                    return (null, names[0].Value.Clone());
+            }
+            catch (Exception exception) when (exception is JsonException or InvalidOperationException)
+            {
+                // Malformed upstream UserInfo must not become a local account name.
+            }
+            return (Results.Problem(statusCode: StatusCodes.Status502BadGateway, title: "IDP 会话响应无效"), default);
+        }
         if (result is IStatusCodeHttpResult { StatusCode: StatusCodes.Status401Unauthorized })
         {
             var context = httpContextAccessor.HttpContext
                 ?? throw new InvalidOperationException("AdminApiProxy 只能在请求上下文内使用。");
             await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
         }
-        return result;
+        return (result, default);
     }
-
 
     /// <summary>
     /// 按 subject 的刷新单飞闸门：串行信号量 + 最近一次成功刷新的输出。
@@ -160,6 +179,9 @@ public sealed class AdminApiProxy(
         {
             request.Headers.TryAddWithoutValidation("X-Panda-Mfa-Grant", grantHeader);
         }
+
+        if (method == HttpMethod.Patch && context.Request.Headers.TryGetValue("If-Match", out var ifMatch))
+            request.Headers.TryAddWithoutValidation("If-Match", ifMatch.ToArray());
 
         if (jsonBody is not null)
         {
@@ -320,7 +342,7 @@ public sealed class AdminApiProxy(
         // 操作授权门禁（AUTH-DELIVERY-002）：403 且响应体带 mfaGrantRequired 真标记——
         // 与 amr step-up 的 mfaRequired 不同标记，前端弹页内 TOTP(+密码)授权对话框而非整页跳转。
         var grantRequired = response.StatusCode == HttpStatusCode.Forbidden && IsGrantGate(body);
-        return new UpstreamResult((int)response.StatusCode, contentType, body, mfaRequired, grantRequired);
+        return new UpstreamResult((int)response.StatusCode, contentType, body, mfaRequired, grantRequired, response.Headers.ETag?.ToString());
     }
 
     /// <summary>上游 403 是否命中操作授权门禁：响应体带布尔真 mfaGrantRequired（只认真标记）。</summary>
@@ -380,14 +402,20 @@ public sealed class AdminApiProxy(
 
     /// <summary>上游透传结果：除可选的 MFA/授权标记响应头外不改动任何内容（Results.Content 不支持自定义头）。</summary>
     private sealed class UpstreamResult(
-        int statusCode, string contentType, string body, bool mfaRequired, bool grantRequired) : IResult, IStatusCodeHttpResult
+        int statusCode, string contentType, string body, bool mfaRequired, bool grantRequired, string? etag) : IResult, IStatusCodeHttpResult
     {
         public int? StatusCode => statusCode;
+        public string Body { get; } = body;
 
         public async Task ExecuteAsync(HttpContext httpContext)
         {
             httpContext.Response.StatusCode = statusCode;
             httpContext.Response.ContentType = contentType;
+            if (etag is not null)
+            {
+                httpContext.Response.Headers.ETag = etag;
+                httpContext.Response.Headers.CacheControl = "no-store";
+            }
             if (mfaRequired)
             {
                 httpContext.Response.Headers["X-Panda-Mfa-Required"] = "true";
@@ -397,7 +425,7 @@ public sealed class AdminApiProxy(
                 httpContext.Response.Headers["X-Panda-Mfa-Grant-Required"] = "true";
             }
 
-            await httpContext.Response.WriteAsync(body, httpContext.RequestAborted);
+            await httpContext.Response.WriteAsync(Body, httpContext.RequestAborted);
         }
     }
 }

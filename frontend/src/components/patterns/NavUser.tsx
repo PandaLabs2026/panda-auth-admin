@@ -66,7 +66,7 @@ export default function NavUser({
 }) {
   const { isMobile } = useSidebar();
   const t = (message: string) => translate?.(message)?.trim() || message;
-  const displayName = name.trim() || t('用户');
+  const displayName = name.trim() || t('未设置名称');
   const displayEmail = email?.trim() || t('邮箱暂不可用');
   const initial = displayName.charAt(0).toUpperCase();
   const entries = accountOrder.flatMap(([id, label]) => {

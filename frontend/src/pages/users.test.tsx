@@ -23,7 +23,6 @@ const detail = (id: string, userName: string): UserDetail => ({
   accessFailedCount: 0,
   twoFactorEnabled: false,
   registerChannel: 0,
-  region: null,
   updatedAt: "2026-01-01T00:00:00Z",
 })
 
@@ -250,4 +249,37 @@ describe("UsersPage claim delete busy guard", () => {
     expect(screen.queryByText("panda:a")).not.toBeInTheDocument()
     expect(screen.getByText("panda:b")).toBeInTheDocument()
   })
+})
+
+it("rebases edited fields after a stale write without sending the old display name", async () => {
+  const attempts: { tag: string | null; body: unknown }[] = []
+  const user = userEvent.setup()
+  vi.stubGlobal("fetch", vi.fn(async (path: string, options?: RequestInit) => {
+    if (path === "/admin/api/session") return json({ subject: "admin-1", name: null, email: null, nickname: null, roles: ["admin"], portalHomeUrl: null })
+    if (path.startsWith("/admin/api/users?")) return json(list)
+    if (path === "/admin/api/users/u-1") return Response.json(
+      { ...detail("u-1", "alice"), displayName: attempts.length ? "Me updated" : "Original" },
+      { headers: { ETag: attempts.length ? '"new"' : '"old"' } },
+    )
+    if (path === "/admin/api/antiforgery") return json({ token: "csrf-token" })
+    if (path === "/admin/api/users/u-1/profile" && options?.method === "PATCH") {
+      attempts.push({ tag: new Headers(options.headers).get("If-Match"), body: JSON.parse(String(options.body)) })
+      if (attempts.length === 1) return Response.json({ title: "资料已更新，请重新核对并保存" }, { status: 412 })
+      return json(detail("u-1", "alice"))
+    }
+    return json([])
+  }))
+
+  render(<Providers><UsersPage /></Providers>)
+  await user.click(await screen.findByText("alice"))
+  await user.click(await screen.findByRole("button", { name: "编辑资料" }))
+  const email = screen.getByLabelText("邮箱")
+  await user.clear(email)
+  await user.type(email, "new@example.test")
+  await user.click(screen.getByRole("button", { name: /^保存$/ }))
+  await waitFor(() => expect(screen.getByLabelText("显示名")).toHaveValue("Me updated"))
+  expect(email).toHaveValue("new@example.test")
+  expect(attempts).toEqual([{ tag: '"old"', body: { email: "new@example.test" } }])
+  await user.click(screen.getByRole("button", { name: /^保存$/ }))
+  await waitFor(() => expect(attempts[1]).toEqual({ tag: '"new"', body: { email: "new@example.test" } }))
 })

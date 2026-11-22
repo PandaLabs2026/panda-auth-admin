@@ -543,16 +543,22 @@ app.MapGet("/admin/api/session", async (HttpContext context, AdminApiProxy proxy
     }
 
     if (!context.User.HasClaim(Claims.Role, PandaAuthRoles.Admin)) return Results.StatusCode(403);
-    if (await proxy.ValidateSessionAsync(context.RequestAborted) is { } failure) return failure;
-    return Results.Ok(new
+    context.Response.Headers.CacheControl = "no-store";
+    var subject = context.User.FindFirst(Claims.Subject)?.Value ?? string.Empty;
+    var (failure, displayName) = await proxy.ValidateSessionAsync(subject, context.RequestAborted);
+    if (failure is not null) return failure;
+
+    var response = new Dictionary<string, object?>
     {
-        subject = context.User.FindFirst(Claims.Subject)?.Value ?? string.Empty,
-        name = context.User.FindFirst(Claims.Name)?.Value,
-        email = context.User.FindFirst(Claims.Email)?.Value,
-        nickname = context.User.FindFirst(PandaAuthClaims.Nickname)?.Value,
-        roles = context.User.FindAll(Claims.Role).Select(claim => claim.Value).ToArray(),
-        portalHomeUrl,
-    });
+        ["subject"] = subject,
+        ["name"] = context.User.FindFirst(Claims.Name)?.Value,
+        ["email"] = context.User.FindFirst(Claims.Email)?.Value,
+        ["nickname"] = context.User.FindFirst(PandaAuthClaims.Nickname)?.Value,
+        ["roles"] = context.User.FindAll(Claims.Role).Select(claim => claim.Value).ToArray(),
+        ["portalHomeUrl"] = portalHomeUrl,
+    };
+    if (displayName.ValueKind != System.Text.Json.JsonValueKind.Undefined) response["displayName"] = displayName;
+    return Results.Ok(response);
 }).AllowAnonymous();
 
 // 路由值的归一化还原：ASP.NET 路由对路由值做**部分**解码（%3F→? 等还原，但 %2F 保留转义
@@ -738,8 +744,8 @@ app.MapPost("/admin/api/users/{id}/revoke-tokens", (string id, HttpContext ctx, 
 app.MapGet("/admin/api/users/{id}/sessions", (string id, AdminApiProxy proxy)
     => proxy.ForwardAsync(PandaAuthAdminApi.UserSessions(NormalizeRouteValue(id)), HttpMethod.Get));
 
-app.MapPut("/admin/api/users/{id}/profile", (string id, HttpContext ctx, AdminApiProxy proxy) =>
-    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(NormalizeRouteValue(id)), HttpMethod.Put, await ReadJsonBodyAsync(ctx))));
+app.MapPatch("/admin/api/users/{id}/profile", (string id, HttpContext ctx, AdminApiProxy proxy) =>
+    WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserProfile(NormalizeRouteValue(id)), HttpMethod.Patch, await ReadJsonBodyAsync(ctx))));
 
 app.MapPost("/admin/api/users/{id}/reset-2fa", (string id, HttpContext ctx, AdminApiProxy proxy) =>
     WithAntiforgeryAsync(ctx, async () => await proxy.ForwardAsync(PandaAuthAdminApi.UserResetTwoFactor(NormalizeRouteValue(id)), HttpMethod.Post)));

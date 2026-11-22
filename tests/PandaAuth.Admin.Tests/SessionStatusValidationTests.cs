@@ -23,8 +23,12 @@ public sealed class SessionStatusValidationTests
     [InlineData(HttpStatusCode.OK, HttpStatusCode.OK, "https://app.example.invalid/", "https://app.example.invalid/")]
     [InlineData(HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized, null, null)]
     [InlineData(HttpStatusCode.ServiceUnavailable, HttpStatusCode.ServiceUnavailable, null, null)]
+    [InlineData(HttpStatusCode.OK, HttpStatusCode.OK, null, null, """{"sub":"fixture-user","display_name":"Administrator"}""", true, "Administrator")]
+    [InlineData(HttpStatusCode.OK, HttpStatusCode.OK, null, null, """{"sub":"fixture-user","display_name":null}""", true, null)]
+    [InlineData(HttpStatusCode.OK, HttpStatusCode.BadGateway, null, null, """{"sub":"other-user","display_name":"Other name"}""")]
     public async Task SessionStatus_ValidatesIssuedTokensBeforeReportingAuthenticated(
-        HttpStatusCode upstream, HttpStatusCode expected, string? appHomeUrl, string? expectedHomeUrl)
+        HttpStatusCode upstream, HttpStatusCode expected, string? appHomeUrl, string? expectedHomeUrl,
+        string userinfo = "{}", bool expectsDisplayName = false, string? displayName = null)
     {
         var calls = 0;
         using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
@@ -42,7 +46,7 @@ public sealed class SessionStatusValidationTests
                 services.AddSingleton<IAdminSessionState, ActiveSessionState>();
                 services.RemoveAll<IAdminSessionRefresher>();
                 services.AddSingleton<IAdminSessionRefresher, RejectedRefresh>();
-                services.AddHttpClient<AdminApiProxy>().ConfigurePrimaryHttpMessageHandler(() => new UserinfoHandler(upstream, () => calls++));
+                services.AddHttpClient<AdminApiProxy>().ConfigurePrimaryHttpMessageHandler(() => new UserinfoHandler(upstream, userinfo, () => calls++));
             });
         });
         using var client = factory.CreateClient(new WebApplicationFactoryClientOptions
@@ -65,11 +69,13 @@ public sealed class SessionStatusValidationTests
         Assert.Equal(expected, response.StatusCode);
         Assert.Equal(1, calls);
         Assert.Null(response.Headers.Location);
-        if (upstream == HttpStatusCode.OK)
+        if (expected == HttpStatusCode.OK)
         {
             var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
             Assert.Equal("fixture-user", payload.GetProperty("subject").GetString());
             Assert.Equal(expectedHomeUrl, payload.GetProperty("portalHomeUrl").GetString());
+            Assert.Equal(expectsDisplayName, payload.TryGetProperty("displayName", out var name));
+            if (expectsDisplayName) Assert.Equal(displayName, name.GetString());
             Assert.Contains(payload.GetProperty("roles").EnumerateArray(), role => role.GetString() == "admin");
         }
         if (upstream == HttpStatusCode.Unauthorized)
@@ -78,14 +84,14 @@ public sealed class SessionStatusValidationTests
             Assert.DoesNotContain(cookies, value => value.Contains("expires=Thu, 01 Jan 1970", StringComparison.OrdinalIgnoreCase));
     }
 
-    private sealed class UserinfoHandler(HttpStatusCode status, Action called) : HttpMessageHandler
+    private sealed class UserinfoHandler(HttpStatusCode status, string body, Action called) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             Assert.Equal(PandaAuthEndpoints.Userinfo, request.RequestUri!.AbsolutePath);
             Assert.Equal("fixture-access", request.Headers.Authorization?.Parameter);
             called();
-            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent("{}", Encoding.UTF8, "application/json") });
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent(body, Encoding.UTF8, "application/json") });
         }
     }
     private sealed class RejectedRefresh : IAdminSessionRefresher

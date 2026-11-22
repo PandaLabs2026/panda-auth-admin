@@ -123,6 +123,10 @@ function requireActive(epoch = adminAuthLifecycle.epoch()) {
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
+  return (await apiGetVersioned<T>(path)).data
+}
+
+export async function apiGetVersioned<T>(path: string): Promise<{ data: T; etag: string | null }> {
   const epoch = adminAuthLifecycle.epoch()
   requireActive(epoch)
   const result = await fetchWithTimeout(path, { headers: { "X-Requested-With": "XMLHttpRequest" } }, async (response) => {
@@ -132,36 +136,36 @@ export async function apiGet<T>(path: string): Promise<T> {
     // 非 JSON 成功响应作为服务错误，不误判为匿名或自动跳转。
     const contentType = response.headers.get("content-type") ?? ""
     if (!contentType.includes("application/json")) throw new Error("服务返回了无效响应。")
-    return (await response.json()) as T
+    return { data: (await response.json()) as T, etag: response.headers.get("ETag") }
   })
   requireActive(epoch)
   return result
 }
 
-export async function apiSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body?: unknown): Promise<T> {
+export async function apiSend<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, body?: unknown, ifMatch?: string): Promise<T> {
   const epoch = adminAuthLifecycle.epoch()
   requireActive(epoch)
   const release = adminAuthLifecycle.protect("进行中的管理操作")
-  try { return await sendAdmitted<T>(method, path, epoch, body) }
+  try { return await sendAdmitted<T>(method, path, epoch, body, ifMatch) }
   finally { release() }
 }
 
-async function sendAdmitted<T>(method: "POST" | "PUT" | "DELETE", path: string, epoch: number, body?: unknown): Promise<T> {
+async function sendAdmitted<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, epoch: number, body?: unknown, ifMatch?: string): Promise<T> {
   const token = await fetchAntiforgeryToken()
   try {
-    return await rawSend<T>(method, path, body, token, epoch)
+    return await rawSend<T>(method, path, body, token, epoch, undefined, ifMatch)
   } catch (cause) {
     // 操作授权流（AUTH-DELIVERY-002）：403 授权标记 → 对话框签发 → 带授权头重放原请求。
     if (!(cause instanceof GrantRequiredSignal)) throw cause
     requireActive(epoch)
     const grantId = await beginGrantFlow(cause)
-    return await rawSend<T>(method, path, body, token, epoch, grantId)
+    return await rawSend<T>(method, path, body, token, epoch, grantId, ifMatch)
   }
 }
 
-async function rawSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body: unknown | undefined, token: string, epoch: number, grantId?: string): Promise<T> {
+async function rawSend<T>(method: "POST" | "PUT" | "PATCH" | "DELETE", path: string, body: unknown | undefined, token: string, epoch: number, grantId?: string, ifMatch?: string): Promise<T> {
   requireActive(epoch)
-  try { return await rawSendCore<T>(method, path, body, token, epoch, grantId) }
+  try { return await rawSendCore<T>(method, path, body, token, epoch, grantId, ifMatch) }
   catch (cause) {
     const rejected = cause instanceof GrantRequiredSignal ||
       cause instanceof ApiError && cause.status !== undefined && cause.status < 500 ||
@@ -172,12 +176,13 @@ async function rawSend<T>(method: "POST" | "PUT" | "DELETE", path: string, body:
 }
 
 async function rawSendCore<T>(
-  method: "POST" | "PUT" | "DELETE",
+  method: "POST" | "PUT" | "PATCH" | "DELETE",
   path: string,
   body: unknown | undefined,
   token: string,
   epoch: number,
   grantId?: string,
+  ifMatch?: string,
 ): Promise<T> {
   requireActive(epoch)
   const result = await fetchWithTimeout(
@@ -189,6 +194,7 @@ async function rawSendCore<T>(
         "X-XSRF-Token": token,
         "X-Requested-With": "XMLHttpRequest",
         ...(grantId ? { "X-Panda-Mfa-Grant": grantId } : {}),
+        ...(ifMatch ? { "If-Match": ifMatch } : {}),
       },
       body: body === undefined ? undefined : JSON.stringify(body),
     },
@@ -254,6 +260,7 @@ export type UserSummary = {
   id: string
   userName: string
   email: string | null
+  displayName?: string | null
   nickname: string | null
   status: number
   createdAt: string
@@ -266,7 +273,6 @@ export type UserDetail = UserSummary & {
   accessFailedCount: number
   twoFactorEnabled: boolean
   registerChannel: number
-  region: string | null
   updatedAt: string
 }
 
@@ -308,8 +314,7 @@ export type ClientOptions = { permissionGroups: { group: string; options: string
 export type CreateUserRequest = {
   userName: string
   email?: string | null
-  nickname?: string | null
-  region?: string | null
+  displayName?: string | null
   password?: string | null
   grantAdminRole: boolean
 }
@@ -320,7 +325,7 @@ export type CreateUserResponse = { id: string; userName: string; email: string |
 export type UserRolesRequest = { roles: string[] }
 
 /** 资料编辑 PUT 全量语义：每个字段携带最终值，null 即清空。 */
-export type UserProfileRequest = { email?: string | null; nickname?: string | null; region?: string | null }
+export type UserProfileRequest = { email?: string | null; displayName?: string | null }
 
 export type DeactivateRequest = { confirmUserName: string }
 

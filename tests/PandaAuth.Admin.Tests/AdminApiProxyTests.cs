@@ -144,6 +144,21 @@ public class AdminApiProxyTests
     }
 
     [Fact]
+    public async Task Profile_patch_forwards_the_original_precondition_and_response_ETag()
+    {
+        var handler = new StubHttpMessageHandler { ResponseETag = "\"next\"" };
+        var context = ContextWithTokens("token-1", null);
+        context.Request.Headers.IfMatch = "\"original\"";
+        var response = await CreateProxy(handler, new StubHttpContextAccessor(context))
+            .ForwardAsync(PandaAuthAdminApi.UserProfile("u-1"), HttpMethod.Patch, """{"displayName":"New name"}""");
+        var (status, headers, _) = await ExecuteAsync(response);
+        Assert.Equal(200, status);
+        Assert.Equal("\"original\"", handler.RequestIfMatch);
+        Assert.Equal("\"next\"", headers.ETag.ToString());
+        Assert.Equal("no-store", headers.CacheControl.ToString());
+    }
+
+    [Fact]
     public async Task Forward_PassesThroughUpstreamErrorStatusAndBody()
     {
         var handler = new StubHttpMessageHandler(HttpStatusCode.BadRequest);
@@ -452,6 +467,9 @@ public class AdminApiProxyTests
 
         public IReadOnlyList<(Uri Uri, string? Authorization, string[] Xff, string? Body)> Requests => _requests;
 
+        public string? ResponseETag { get; init; }
+        public string? RequestIfMatch { get; private set; }
+
         public Exception? ThrowOnSend { get; init; }
 
         /// <summary>上游响应体覆写（缺省回桩内置 JSON）；空串表示空体（server 侧 Forbid 的形态）。</summary>
@@ -463,6 +481,7 @@ public class AdminApiProxyTests
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             var body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            RequestIfMatch = request.Headers.IfMatch.SingleOrDefault()?.ToString();
             _requests.Add((
                 request.RequestUri!,
                 request.Headers.Authorization?.ToString(),
@@ -477,13 +496,16 @@ public class AdminApiProxyTests
                 && string.Equals(request.Headers.Authorization?.Parameter, RejectBearerToken, StringComparison.Ordinal)
                 ? HttpStatusCode.Unauthorized
                 : statusCode;
-            return new HttpResponseMessage(status)
+            var response = new HttpResponseMessage(status)
             {
                 Content = new StringContent(
                     Body ?? """{"items":[],"total":0,"page":1,"pageSize":20}""",
                     Encoding.UTF8,
                     Body is null ? "application/json" : "application/problem+json"),
             };
+            if (ResponseETag is not null)
+                response.Headers.ETag = new System.Net.Http.Headers.EntityTagHeaderValue(ResponseETag);
+            return response;
         }
     }
 
