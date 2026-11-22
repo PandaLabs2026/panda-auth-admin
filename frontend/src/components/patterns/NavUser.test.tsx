@@ -37,7 +37,7 @@ describe('UX-03 account summary and menu', () => {
   });
   test('missing identity values use neutral text without inventing an email', () => {
     render(wrap(<NavUser name="  " onLogout={() => {}} />));
-    expect(screen.getByText('用户')).toBeInTheDocument();
+    expect(screen.getByText('未设置名称')).toBeInTheDocument();
     expect(screen.getByText('邮箱暂不可用')).toBeInTheDocument();
   });
   test('application translation changes presentation without invoking logout', async () => {
