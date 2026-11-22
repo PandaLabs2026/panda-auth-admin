@@ -28,7 +28,7 @@ The template NotificationBell (notification center) is not wired: the BFF has no
 
 Use the .NET SDK selected by [global.json](global.json) (currently 10.0.112 with latestFeature roll-forward). This repository has no cross-repository source dependency and can be built without the private coordination repository. Commands below run from this repository root.
 
-Use Node 24 and npm for the frontend, matching the Docker build environment. There is no cross-repository ProjectReference. Frontend output is written to the BFF's `wwwroot/admin`.
+Use Node 24 and pnpm 12.21.0 for the frontend, matching the Docker build environment. The npm scripts bootstrap the pinned pnpm version. There is no cross-repository ProjectReference. Frontend output is written to the BFF's `wwwroot/admin`.
 
 ```bash
 dotnet build PandaAuth.Admin.slnx
@@ -64,4 +64,4 @@ and `PANDA_AUTH_TRUSTED_PROXY` to the allocation's exact IPv4 network gateway.
 Subnet peers and loopback are not trusted in bridge mode. The application's image defaults
 are development defaults, not production port assignments.
 
-Dependency updates use `npm run deps:install`. Both `deps:ci` and `deps:install` run capacity preflight before invoking npm.
+Dependency updates use `npm run deps:install`. Both `deps:ci` and `deps:install` run capacity preflight before invoking pnpm. Dependency updates use the committed `frontend/pnpm-lock.yaml`.

@@ -10,9 +10,12 @@
 FROM node@sha256:5cbc7caba8c2c0f0bca675d1b61b9f2857e1cf1853c6164ee9dd409501a936e7 AS frontend
 WORKDIR /src/panda-auth-admin/frontend
 # lockfile 必选：去掉 `*` 通配后缺失即构建失败，避免装出与提交内容无关的依赖树
-COPY panda-auth-admin/frontend/package.json panda-auth-admin/frontend/package-lock.json ./
-# Host capacity admission precedes Docker; retain dependency lifecycle scripts here.
-RUN npm ci
+COPY panda-auth-admin/frontend/package.json panda-auth-admin/frontend/pnpm-lock.yaml ./
+# Host capacity admission precedes Docker. The container owns its dependency caches.
+RUN --mount=type=cache,id=panda-auth-admin-pnpm12-store,target=/pnpm/store,sharing=locked \
+    --mount=type=cache,id=panda-auth-admin-pnpm12-metadata,target=/pnpm/metadata,sharing=locked \
+    PNPM_CONFIG_STORE_DIR=/pnpm/store PNPM_CONFIG_CACHE_DIR=/pnpm/metadata \
+    npm exec --yes --package=pnpm@12.21.0 -- pnpm install --frozen-lockfile --network-concurrency=8 --child-concurrency=1
 COPY panda-auth-admin/frontend/ .
 RUN ./node_modules/.bin/tsc --noEmit && ./node_modules/.bin/vite build
 
