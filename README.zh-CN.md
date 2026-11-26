@@ -24,7 +24,7 @@ PandaAuth 管理后台，由 .NET 10 BFF 与 React 19 前端组成。生产路�
 
 需要 .NET SDK，版本选择见本仓 [global.json](global.json)（当前请求 10.0.112，允许 latestFeature roll-forward）。本仓没有跨仓源码依赖，可脱离私有元仓独立构建。以下命令在本仓根目录执行。
 
-前端使用 Node 24 与 npm（与 Docker 构建环境一致）。本仓无跨仓 ProjectReference。前端构建输出到 BFF 的 `wwwroot/admin`。
+前端使用 Node 24 与 pnpm 12.21.0（与 Docker 构建环境一致）。npm 脚本引导固定版本的 pnpm。本仓无跨仓 ProjectReference。前端构建输出到 BFF 的 `wwwroot/admin`。
 
 ```bash
 dotnet build PandaAuth.Admin.slnx
@@ -43,6 +43,8 @@ npm run dev
 ```
 
 前端开发端口 5171，API 代理到 9006；完整后端登录未实现，不能用页面打开代替接入验收。
+
+依赖更新运行 `npm run deps:install`，提交 `frontend/pnpm-lock.yaml`。安装前执行容量预检。
 
 ## Roadmap 与治理
 

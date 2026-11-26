@@ -3,9 +3,10 @@
   "private": true,
   "version": "0.4.0",
   "type": "module",
+  "packageManager": "pnpm@12.21.0",
   "scripts": {
-    "deps:ci": "node scripts/capacity-build.mjs && npm ci",
-    "deps:install": "node scripts/capacity-build.mjs && npm install",
+    "deps:ci": "node scripts/capacity-build.mjs && npm exec --yes --package=pnpm@12.21.0 -- pnpm install --frozen-lockfile",
+    "deps:install": "node scripts/capacity-build.mjs && npm exec --yes --package=pnpm@12.21.0 -- pnpm install",
     "dev": "vite",
     "prebuild": "node scripts/capacity-build.mjs",
     "test:capacity": "node --test scripts/test-capacity-build.mjs",
